@@ -65,7 +65,7 @@ function App() {
   };
   const handleConfirmCharacter = (cfg) => {
     setYou({ name: cfg.name || "Pseudo", config: cfg });
-    setStage("lobby");
+    setStage("squat");
   };
   const handleEnterSquat = () => setStage("squat");
   const handleLeave = () => setStage("home");

@@ -405,7 +405,6 @@ button { font-family: inherit; cursor: pointer; }
 .squat {
   background: #050507;
   overflow: hidden;
-  position: relative;
 }
 
 .squat-world-wrap {
