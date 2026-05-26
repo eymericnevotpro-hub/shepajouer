@@ -6,7 +6,7 @@
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "density": "medium",
-  "botCount": 3
+  "botCount": 0
 }/*EDITMODE-END*/;
 
 function makeCode() {
