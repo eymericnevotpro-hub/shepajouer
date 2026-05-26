@@ -10,19 +10,47 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div id="root"></div>
+<canvas id="canvas"></canvas>
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<div id="ui">
+  <!-- HOME -->
+  <section id="home" class="screen">
+    <div class="logo">
+      <div class="logo-line1">SHEPA</div>
+      <div class="logo-line2">JOUER</div>
+    </div>
+    <div class="sub">// 3D · entre potes · code d'invite</div>
+    <div id="home-actions" class="actions">
+      <button id="btn-host" class="btn acid">+ Créer une partie</button>
+      <button id="btn-join" class="btn ghost">Rejoindre avec un code</button>
+    </div>
+    <div id="join-form" class="actions hidden">
+      <input id="code-input" class="code-input" placeholder="CODE" maxlength="6" autocomplete="off" />
+      <button id="btn-join-go" class="btn acid">Rejoindre</button>
+      <button id="btn-join-back" class="btn xs ghost">← Annuler</button>
+    </div>
+    <div id="connect-status" class="status hidden"></div>
+  </section>
 
-<script type="text/babel" src="tweaks-panel.jsx"></script>
-<script type="text/babel" src="voxel.jsx"></script>
-<script type="text/babel" src="screens.jsx"></script>
-<script type="text/babel" src="squat.jsx"></script>
-<script type="text/babel" src="game1.jsx"></script>
-<script type="text/babel" src="game2.jsx"></script>
-<script type="text/babel" src="game3.jsx"></script>
-<script type="text/babel" src="app.jsx"></script>
+  <!-- IN-GAME HUD -->
+  <section id="game" class="screen hidden">
+    <div id="hud">
+      <div class="pill">SALON · <span id="code-pill" class="v"></span>
+        <button id="btn-copy" class="copy">copier</button>
+      </div>
+      <div class="pill"><span id="players-count">1</span> <span class="v">en ligne</span></div>
+    </div>
+    <div id="controls" class="pill controls">
+      <div><span class="key">Z</span><span class="key">Q</span><span class="key">S</span><span class="key">D</span> bouger</div>
+      <div><span class="key">␣</span> sauter</div>
+    </div>
+    <button id="btn-leave" class="btn xs ghost leave">← Quitter</button>
+    <div id="toast" class="toast hidden"></div>
+  </section>
+</div>
+
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
