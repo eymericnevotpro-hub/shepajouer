@@ -164,10 +164,12 @@ function SquatScene({ you, friends, settings, onEnterGame, density = "medium" })
   // Player position in tile units
   const [pos, setPos] = React.useState({ x: 7, y: 5 });
   const [keys, setKeys] = React.useState({});
+  const [jumpY, setJumpY] = React.useState(0);
   const posRef = React.useRef(pos);
   posRef.current = pos;
   const keysRef = React.useRef(keys);
   keysRef.current = keys;
+  const jumpRef = React.useRef({ active: false, t: 0 });
 
   // friends state — random walkers
   const [friendPos, setFriendPos] = React.useState(() => {
@@ -177,11 +179,12 @@ function SquatScene({ you, friends, settings, onEnterGame, density = "medium" })
     return friends.map((f, i) => ({ ...f, x: seeds[i]?.x || 5, y: seeds[i]?.y || 5, vx: 0, vy: 0 }));
   });
 
-  // Movement loop
+  // Keyboard tracking — ZQSD (AZERTY) + WASD (QWERTY) + arrows, E to interact, Space to jump
   React.useEffect(() => {
+    const TRACKED = ["w","a","s","d","z","q","arrowup","arrowdown","arrowleft","arrowright","e"," "];
     const onDown = (e) => {
       const k = e.key.toLowerCase();
-      if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright","e"].includes(k)) {
+      if (TRACKED.includes(k)) {
         e.preventDefault();
         setKeys((p) => ({ ...p, [k]: true }));
       }
@@ -205,20 +208,22 @@ function SquatScene({ you, friends, settings, onEnterGame, density = "medium" })
     { id: "g3", x: 11.5, y: 2.5, label: "Crachoir", color: "acid", prompt: "Jouer" },
   ];
 
-  // Movement tick (60fps)
+  // Movement + jump tick (60fps)
   React.useEffect(() => {
     let raf;
     let last = performance.now();
     const speed = 4.0; // tiles/sec
+    const JUMP_DURATION = 0.55;
+    const JUMP_HEIGHT = 56;
 
     const loop = (t) => {
       const dt = Math.min(0.05, (t - last) / 1000);
       last = t;
       const k = keysRef.current;
       let dx = 0, dy = 0;
-      if (k.w || k.arrowup) dy -= 1;
+      if (k.w || k.z || k.arrowup) dy -= 1;
       if (k.s || k.arrowdown) dy += 1;
-      if (k.a || k.arrowleft) dx -= 1;
+      if (k.a || k.q || k.arrowleft) dx -= 1;
       if (k.d || k.arrowright) dx += 1;
       if (dx || dy) {
         const len = Math.hypot(dx, dy);
@@ -226,12 +231,27 @@ function SquatScene({ you, friends, settings, onEnterGame, density = "medium" })
         setPos((p) => {
           let nx = p.x + dx * speed * dt;
           let ny = p.y + dy * speed * dt;
-          // clamp inside walkable area (avoid back wall row 0)
           nx = Math.max(0.6, Math.min(GRID_W - 0.6, nx));
           ny = Math.max(0.8, Math.min(GRID_H - 0.6, ny));
           return { x: nx, y: ny };
         });
       }
+
+      // Jump: trigger on space if not already airborne
+      if (k[" "] && !jumpRef.current.active) {
+        jumpRef.current = { active: true, t: 0 };
+      }
+      if (jumpRef.current.active) {
+        jumpRef.current.t += dt;
+        const p = jumpRef.current.t / JUMP_DURATION;
+        if (p >= 1) {
+          jumpRef.current.active = false;
+          setJumpY(0);
+        } else {
+          setJumpY(4 * JUMP_HEIGHT * p * (1 - p));
+        }
+      }
+
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -300,11 +320,16 @@ function SquatScene({ you, friends, settings, onEnterGame, density = "medium" })
   const propCount = Math.round(allProps.length * densityMul);
   const props = allProps.slice(0, Math.min(allProps.length, propCount));
 
-  // World render center
+  // Camera: follow the player + zoom in for a closer view
+  const ZOOM = 1.6;
+  const playerProj = project(pos.x, pos.y);
   const worldStyle = {
     width: 1,
     height: 1,
     position: "relative",
+    transform: `translate(${-playerProj.sx * ZOOM}px, ${-playerProj.sy * ZOOM}px) scale(${ZOOM})`,
+    transformOrigin: "center center",
+    willChange: "transform",
   };
 
   // Sort all "depth-sorted" entities by y (then x) for painter's algorithm
@@ -384,7 +409,14 @@ function SquatScene({ you, friends, settings, onEnterGame, density = "medium" })
             }
             if (e.kind === "you") {
               return (
-                <div key="you" className="squat-character you" style={style}>
+                <div
+                  key="you"
+                  className="squat-character you"
+                  style={{
+                    ...style,
+                    transform: `translate(-50%, calc(-100% - ${jumpY}px))`,
+                  }}
+                >
                   <div className="name-tag">{you.name}</div>
                   <VoxelCharacter config={you.config} cell={5} />
                 </div>
@@ -414,7 +446,8 @@ function SquatScene({ you, friends, settings, onEnterGame, density = "medium" })
       </div>
 
       <div className="squat-controls">
-        <div><span className="key">W</span><span className="key">A</span><span className="key">S</span><span className="key">D</span> bouger</div>
+        <div><span className="key">Z</span><span className="key">Q</span><span className="key">S</span><span className="key">D</span> bouger</div>
+        <div><span className="key">␣</span> sauter</div>
         <div><span className="key">E</span> interagir avec une table</div>
       </div>
     </div>
