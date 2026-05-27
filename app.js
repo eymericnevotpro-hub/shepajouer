@@ -268,8 +268,9 @@ function updatePlayer(dt) {
     player.mesh.position.x += dx * SPEED * dt;
     player.mesh.position.z += dz * SPEED * dt;
 
-    // Smooth face-towards-movement
-    const targetYaw = Math.atan2(dx, dz) + Math.PI;
+    // Smooth face-towards-movement (character's +Z is "forward" since eyes face +Z).
+    // The character moves in (dx, dz), so yaw such that (sin yaw, cos yaw) = (dx, dz).
+    const targetYaw = Math.atan2(dx, dz);
     let d = targetYaw - player.yaw;
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
@@ -301,12 +302,20 @@ function updatePlayer(dt) {
 }
 
 // =============================================================
-// 3rd-PERSON CAMERA — trailing offset that lerps to player
+// 3rd-PERSON CAMERA — locked behind the player (rotates with them)
 // =============================================================
-const camOffset = new THREE.Vector3(0, 5.5, 8);
+const CAM_DIST = 8;
+const CAM_HEIGHT = 5.5;
 const lookOffset = new THREE.Vector3(0, 1.6, 0);
 function updateCamera(dt) {
-  const tgt = player.mesh.position.clone().add(camOffset);
+  // Player faces (sin yaw, 0, cos yaw); camera sits opposite that direction.
+  const fwdX = Math.sin(player.yaw);
+  const fwdZ = Math.cos(player.yaw);
+  const tgt = new THREE.Vector3(
+    player.mesh.position.x - fwdX * CAM_DIST,
+    player.mesh.position.y + CAM_HEIGHT,
+    player.mesh.position.z - fwdZ * CAM_DIST
+  );
   camera.position.lerp(tgt, Math.min(1, 6 * dt));
   const look = player.mesh.position.clone().add(lookOffset);
   camera.lookAt(look);
@@ -561,12 +570,16 @@ function enterGame(code) {
   homeEl.classList.add("hidden");
   gameEl.classList.remove("hidden");
   running = true;
-  // Reset player
+  // Reset player — yaw = π so the player faces -Z at spawn, away from the
+  // camera which lerps to (player.x - sin π * dist, ..., player.z - cos π * dist) = (0, h, +dist).
   player.mesh.position.set(0, 0, 0);
   player.vy = 0;
   player.onGround = true;
-  player.yaw = 0;
-  player.mesh.rotation.y = 0;
+  player.yaw = Math.PI;
+  player.mesh.rotation.y = Math.PI;
+  // Snap camera to initial behind-position so first frame isn't a wild swing.
+  camera.position.set(0, CAM_HEIGHT, CAM_DIST);
+  camera.lookAt(new THREE.Vector3(0, 1.6, 0));
 }
 
 function exitGame() {
