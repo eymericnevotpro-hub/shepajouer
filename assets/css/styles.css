@@ -1,0 +1,201 @@
+/* ============================================================
+   SHEPA JOUER — design system "3D bouncy coloré"
+   Tokens repris pixel-perfect du handoff Claude Design.
+   ============================================================ */
+:root{
+  --cream:#FFF3DF; --ink:#3B2D5E; --ink-soft:#7A6BA8; --ink-faint:#A99CC9; --ink-ghost:#C9BBE8;
+  --coral:#FF5D73;  --coral-d:#C23A50;
+  --yellow:#FFC93C; --yellow-d:#D9A416;
+  --teal:#2EC4B6;   --teal-d:#1E8B81;
+  --purple:#9B5DE5; --purple-d:#6E3CB0;
+  --blue:#4D96FF;   --blue-d:#2F6BC4;
+  --pink:#FF8FA3;   --pink-d:#D45D75;
+  --paper:#FFF8EC;  --paper2:#FFF1C9;
+  --lilac:#F4EFFF;  --mint:#E4F8F6; --sky:#EAF2FF; --blush:#FFE3E8; --peach:#FFD9B8;
+  --r:26px; --r-sm:16px; --r-xs:12px;
+  --bd:3px solid var(--ink);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--cream); color:var(--ink);
+  font-family:'Baloo 2', system-ui, sans-serif; font-weight:600;
+  -webkit-tap-highlight-color:transparent; overflow-x:hidden;
+  -webkit-user-select:none; user-select:none;
+}
+#app{min-height:100%; display:flex; flex-direction:column}
+
+/* ---------- screen scaffold ---------- */
+.screen{
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:20px; padding:24px 18px 40px; position:relative; overflow:hidden;
+  animation:screenIn .42s cubic-bezier(.34,1.56,.64,1) both;
+}
+.blob{position:absolute; border-radius:50%; pointer-events:none; z-index:0}
+
+/* ---------- typography ---------- */
+h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
+.title-xl{font-size:clamp(40px,11vw,58px); font-weight:800; letter-spacing:-1px; line-height:1;
+  text-shadow:0 4px 0 var(--peach); transform:rotate(-2deg);}
+.caveat{font-family:'Caveat',cursive; color:var(--purple); font-size:19px; font-weight:700; line-height:1.2}
+.muted{color:var(--ink-soft)} .faint{color:var(--ink-faint)}
+
+/* ---------- buttons (3D push) ---------- */
+.btn{
+  font-family:inherit; font-weight:800; font-size:21px; color:#fff;
+  border:var(--bd); border-radius:var(--r-sm); padding:14px 22px;
+  background:var(--coral); box-shadow:0 6px 0 var(--coral-d);
+  cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  transition:transform .06s ease, box-shadow .06s ease; text-align:center; line-height:1.05;
+}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(5px); box-shadow:0 1px 0 var(--coral-d)}
+.btn:disabled{opacity:.55; cursor:not-allowed; filter:grayscale(.25)}
+.btn.lg{font-size:23px; padding:16px 26px; box-shadow:0 7px 0 var(--coral-d)}
+.btn.sm{font-size:17px; padding:9px 16px; box-shadow:0 4px 0 var(--coral-d)}
+.btn.block{width:100%}
+.btn--coral {background:var(--coral); box-shadow:0 6px 0 var(--coral-d)}
+.btn--coral:active{box-shadow:0 1px 0 var(--coral-d)}
+.btn--teal  {background:var(--teal);  box-shadow:0 6px 0 var(--teal-d)}
+.btn--teal:active{box-shadow:0 1px 0 var(--teal-d)}
+.btn--purple{background:var(--purple);box-shadow:0 6px 0 var(--purple-d)}
+.btn--purple:active{box-shadow:0 1px 0 var(--purple-d)}
+.btn--blue  {background:var(--blue);  box-shadow:0 6px 0 var(--blue-d)}
+.btn--blue:active{box-shadow:0 1px 0 var(--blue-d)}
+.btn--yellow{background:var(--yellow);box-shadow:0 6px 0 var(--yellow-d); color:var(--ink)}
+.btn--yellow:active{box-shadow:0 1px 0 var(--yellow-d)}
+.btn--ghost {background:#fff; color:var(--ink); box-shadow:0 5px 0 var(--ink-ghost)}
+.btn--ghost:active{box-shadow:0 1px 0 var(--ink-ghost)}
+.btn--dash{background:var(--paper); color:var(--ink-faint); border:3px dashed var(--ink-faint); box-shadow:none}
+.btn--dash:active{transform:translateY(2px)}
+
+/* ---------- cards / surfaces ---------- */
+.card{
+  background:#fff; border:var(--bd); border-radius:var(--r);
+  box-shadow:0 10px 0 var(--coral); padding:26px; width:100%;
+  position:relative; z-index:1;
+}
+.card.sh-coral {box-shadow:0 10px 0 var(--coral)}
+.card.sh-yellow{box-shadow:0 10px 0 var(--yellow)}
+.card.sh-teal  {box-shadow:0 10px 0 var(--teal)}
+.card.sh-purple{box-shadow:0 10px 0 var(--purple)}
+.card.sh-blue  {box-shadow:0 10px 0 var(--blue)}
+.card.sh-pink  {box-shadow:0 10px 0 var(--pink)}
+.stage{width:100%; max-width:560px; display:flex; flex-direction:column; gap:16px}
+.stage.wide{max-width:820px}
+.stage.game{max-width:600px}
+
+/* ---------- pills / chips / badges ---------- */
+.pill{border:2px solid var(--ink); border-radius:999px; padding:4px 15px; font-size:16px; font-weight:700; background:#fff; display:inline-flex; align-items:center; gap:7px; white-space:nowrap}
+.pill.solid{background:var(--ink); color:#fff}
+.pill.paper{background:var(--paper2)} .pill.lilac{background:var(--lilac)} .pill.mint{background:var(--mint)}
+.chip{border:2px solid var(--ink); border-radius:999px; padding:3px 14px; font-size:15px; font-weight:700; background:#fff; cursor:pointer; transition:transform .08s}
+.chip.active{background:var(--ink); color:#fff}
+.chip:active{transform:scale(.94)}
+.badge{display:inline-block; color:#fff; border-radius:10px; padding:2px 12px; font-size:18px; font-weight:800; box-shadow:0 3px 0 var(--coral-d)}
+.tag{position:absolute; top:-10px; right:-8px; background:var(--coral); color:#fff; border:2px solid var(--ink); border-radius:999px; padding:1px 10px; font-size:13px; font-weight:800; transform:rotate(8deg)}
+
+/* numbered step badge */
+.step-num{width:44px; height:44px; border:var(--bd); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; color:#fff; flex-shrink:0}
+
+/* ---------- inputs ---------- */
+.field{
+  border:var(--bd); border-radius:14px; background:var(--paper);
+  font-family:inherit; font-weight:700; font-size:19px; color:var(--ink);
+  padding:13px 16px; width:100%; outline:none; -webkit-user-select:text; user-select:text;
+}
+.field::placeholder{color:var(--ink-faint); font-weight:600}
+.field:focus{border-color:var(--purple); box-shadow:0 0 0 4px rgba(155,93,229,.18)}
+.field.code{text-align:center; letter-spacing:8px; text-transform:uppercase; font-weight:800; font-size:24px}
+
+/* ---------- avatar bubble ---------- */
+.ava{border:var(--bd); border-radius:50%; background:var(--paper); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; line-height:1}
+.ava img{width:100%; height:100%; object-fit:cover}
+.ava.x40{width:40px; height:40px; font-size:19px}
+.ava.x52{width:52px; height:52px; font-size:24px}
+.ava.x58{width:58px; height:58px; font-size:26px; background:var(--yellow); box-shadow:0 4px 0 var(--yellow-d)}
+
+/* ---------- rows ---------- */
+.row{display:flex; align-items:center; gap:12px}
+.row.between{justify-content:space-between}
+.col{display:flex; flex-direction:column}
+.grow{flex:1} .wrap{flex-wrap:wrap}
+.hint{font-family:'Caveat',cursive; color:var(--purple); font-size:20px; font-weight:700; line-height:1.25}
+
+/* sub-panels inside cards */
+.panel{border:var(--bd); border-radius:18px; padding:14px 16px; display:flex; flex-direction:column; gap:10px}
+.panel.paper{background:var(--paper)} .panel.lilac{background:var(--lilac)} .panel.mint{background:var(--mint)} .panel.sky{background:var(--sky)}
+.panel-label{font-size:16px; font-weight:700; color:var(--ink-soft)}
+
+/* ---------- cadran ---------- */
+.cadran-wrap{width:100%; display:flex; justify-content:center; touch-action:none}
+.cadran{width:100%; max-width:480px; height:auto; display:block; overflow:visible}
+.cadran .needle{cursor:grab}
+.cadran.dragging .needle{cursor:grabbing}
+.theme-card{display:flex; align-items:center; gap:12px; border:var(--bd); border-radius:var(--r-sm); padding:11px 18px; background:var(--sky); box-shadow:0 4px 0 #C5D8F5}
+.theme-pole{flex:1; font-size:20px; font-weight:800}
+.clue-bubble{align-self:center; border:var(--bd); border-radius:999px; padding:8px 26px; font-size:23px; font-weight:800; background:var(--paper2); box-shadow:0 5px 0 #E5C96A; transform:rotate(-1.5deg); text-align:center; max-width:100%}
+
+/* score chips on reveal */
+.score-chip{border:var(--bd); border-radius:14px; padding:6px 14px; font-size:17px; font-weight:800; background:#fff; box-shadow:0 4px 0 var(--ink-ghost); animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both}
+
+/* ---------- podium ---------- */
+.podium-base{border:var(--bd); border-radius:12px 12px 0 0; display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; width:104px}
+
+/* ---------- shop grid ---------- */
+.shop-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+.shop-item{border:var(--bd); border-radius:18px; background:var(--paper); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:14px 6px; box-shadow:0 5px 0 #E8DCC4; cursor:pointer; position:relative; transition:transform .08s; min-height:120px}
+.shop-item:active{transform:translateY(3px); box-shadow:0 2px 0 #E8DCC4}
+.shop-item.owned{background:var(--mint)} .shop-item.locked{background:transparent; border:3px dashed var(--ink-faint); box-shadow:none; color:var(--ink-faint); cursor:default}
+.shop-glyph{font-size:38px; line-height:1}
+.price{background:var(--yellow); border:2px solid var(--ink); border-radius:999px; padding:2px 12px; font-size:15px; font-weight:800}
+.price.got{background:var(--teal); color:#fff}
+
+/* ---------- avatar drawing ---------- */
+.draw-pad{width:min(74vw,250px); aspect-ratio:1; border:var(--bd); border-radius:50%; background:var(--paper); box-shadow:0 6px 0 #E8DCC4; touch-action:none; display:block}
+.swatch{width:30px; height:30px; border-radius:50%; border:2px solid var(--ink); box-shadow:0 3px 0 var(--ink-ghost); cursor:pointer; transition:transform .08s}
+.swatch.active{transform:scale(1.18); box-shadow:0 0 0 3px var(--cream),0 0 0 6px var(--ink)}
+.tool{width:34px; height:34px; border:2px solid var(--ink); border-radius:8px; background:var(--lilac); display:flex; align-items:center; justify-content:center; font-weight:800; cursor:pointer}
+.tool.active{background:var(--purple); color:#fff}
+.tmpl{aspect-ratio:1; border:2px solid var(--ink); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:22px; cursor:pointer; transition:transform .08s}
+.tmpl:active{transform:scale(.9)}
+
+/* ---------- top bar (game) ---------- */
+.topbar{display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; flex-wrap:wrap}
+.tb-label{white-space:normal!important; flex:1 1 150px; min-width:0; line-height:1.2}
+.tb-timer{flex:0 0 auto}
+
+/* ---------- mute button ---------- */
+.mute-btn{position:fixed; right:14px; bottom:14px; z-index:50; width:46px; height:46px; border:var(--bd); border-radius:50%; background:#fff; font-size:20px; cursor:pointer; box-shadow:0 4px 0 var(--ink-ghost)}
+.mute-btn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--ink-ghost)}
+
+/* ---------- confetti ---------- */
+#confetti{position:fixed; inset:0; pointer-events:none; z-index:60; overflow:hidden}
+.conf{position:absolute; width:11px; height:15px; border-radius:2px; will-change:transform; animation:fall linear forwards}
+
+/* ---------- animations ---------- */
+@keyframes floaty{0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-8px) rotate(-2deg)}}
+@keyframes screenIn{from{opacity:0; transform:translateY(14px) scale(.98)} to{opacity:1; transform:none}}
+@keyframes popIn{from{opacity:0; transform:scale(.6)} to{opacity:1; transform:scale(1)}}
+@keyframes pop{0%{transform:scale(0)} 70%{transform:scale(1.18)} 100%{transform:scale(1)}}
+@keyframes wobble{0%{transform:rotate(0)}25%{transform:rotate(2.5deg)}50%{transform:rotate(-1.8deg)}75%{transform:rotate(1deg)}100%{transform:rotate(0)}}
+@keyframes fall{to{transform:translateY(108vh) rotate(720deg)}}
+@keyframes shake{10%,90%{transform:translateX(-2px)}30%,70%{transform:translateX(4px)}50%{transform:translateX(-5px)}}
+.pop{animation:pop .45s cubic-bezier(.34,1.56,.64,1) both}
+.floaty{animation:floaty 3s ease-in-out infinite}
+
+/* ---------- helpers ---------- */
+.center{text-align:center} .hidden{display:none!important}
+.spread{display:flex; gap:12px} .gap8{gap:8px} .gap6{gap:6px}
+.divider{width:3px; height:28px; background:#EDE6F7; border-radius:2px}
+
+/* ---------- responsive ---------- */
+@media (max-width:560px){
+  .card{padding:20px 18px; box-shadow:0 8px 0 var(--coral)}
+  .card.sh-yellow{box-shadow:0 8px 0 var(--yellow)} .card.sh-teal{box-shadow:0 8px 0 var(--teal)}
+  .card.sh-purple{box-shadow:0 8px 0 var(--purple)} .card.sh-blue{box-shadow:0 8px 0 var(--blue)} .card.sh-pink{box-shadow:0 8px 0 var(--pink)}
+  .btn{font-size:19px; padding:13px 18px}
+  .shop-grid{grid-template-columns:repeat(2,1fr)}
+  .theme-pole{font-size:18px}
+}

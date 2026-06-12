@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shepa Jouer — Far West</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Space+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="ui">
+  <!-- HOME -->
+  <section id="home" class="screen">
+    <div class="logo">
+      <div class="logo-line1">SHEPA</div>
+      <div class="logo-line2">JOUER</div>
+      <div class="logo-badge">★ FAR WEST ★</div>
+    </div>
+    <div class="sub">// 3D · entre potes · code d'invite</div>
+    <div id="home-actions" class="actions">
+      <button id="btn-host" class="btn acid">+ Ouvrir une ville</button>
+      <button id="btn-join" class="btn ghost">Rejoindre avec un code</button>
+    </div>
+    <div id="join-form" class="actions hidden">
+      <input id="code-input" class="code-input" placeholder="CODE" maxlength="6" autocomplete="off" />
+      <button id="btn-join-go" class="btn acid">Rejoindre</button>
+      <button id="btn-join-back" class="btn xs ghost">← Annuler</button>
+    </div>
+    <div id="connect-status" class="status hidden"></div>
+  </section>
+
+  <!-- IN-GAME HUD -->
+  <section id="game" class="screen hidden">
+    <div id="hud">
+      <div class="pill">VILLE · <span id="code-pill" class="v"></span>
+        <button id="btn-copy" class="copy">copier</button>
+      </div>
+      <div class="pill"><span id="players-count">1</span> <span class="v">cowboys</span></div>
+    </div>
+    <div id="controls" class="pill controls">
+      <div><span class="key">Z</span><span class="key">Q</span><span class="key">S</span><span class="key">D</span> bouger</div>
+      <div><span class="key">souris</span> regarder · <span class="key">␣</span> sauter · <span class="key">clic</span> frapper · <span class="key">clic droit</span> pointer · <span class="key">R</span> ragdoll · <span class="key">E</span> voiture</div>
+    </div>
+    <div id="crosshair"></div>
+    <div id="hit-flash" class="hit-flash hidden"></div>
+    <div id="lock-hint" class="lock-hint hidden">Clique pour regarder autour ·<br/><span>Échap pour libérer la souris</span></div>
+    <button id="btn-leave" class="btn xs ghost leave">← Quitter</button>
+    <button id="btn-mic" class="btn xs ghost mic hidden">🎤 Micro</button>
+    <div id="toast" class="toast hidden"></div>
+  </section>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+    "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+  }
+}
+</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

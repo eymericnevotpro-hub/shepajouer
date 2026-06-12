@@ -1,0 +1,33 @@
+{
+  "_comment": "Bone mapping for retargeting NVIDIA Kimodo motion (SMPL-X / AMASS skeleton) onto the Shepa Jouer marshmallow rig. Source keys = SMPL-X body joint names (as named by the SMPL-X Blender add-on). Target values = our rig's bone names (assets/marshmallow_rigged.glb).",
+  "map": {
+    "pelvis": "Hips",
+    "spine1": "Spine",
+    "spine2": "Spine01",
+    "spine3": "Spine02",
+    "neck": "neck",
+    "head": "Head",
+    "left_collar": "LeftShoulder",
+    "right_collar": "RightShoulder",
+    "left_shoulder": "LeftArm",
+    "right_shoulder": "RightArm",
+    "left_elbow": "LeftForeArm",
+    "right_elbow": "RightForeArm",
+    "left_wrist": "LeftHand",
+    "right_wrist": "RightHand",
+    "left_hip": "LeftUpLeg",
+    "right_hip": "RightUpLeg",
+    "left_knee": "LeftLeg",
+    "right_knee": "RightLeg",
+    "left_ankle": "LeftFoot",
+    "right_ankle": "RightFoot",
+    "left_foot": "LeftToeBase",
+    "right_foot": "RightToeBase"
+  },
+  "notes": [
+    "SMPL 'collar' = clavicle -> our 'Shoulder' bones; SMPL 'shoulder' = upper arm -> our 'Arm' bones.",
+    "SMPL 'foot' = toe -> our 'ToeBase'; SMPL 'ankle' = our 'Foot'.",
+    "Hands/fingers from SMPL-X are ignored (our rig has no finger bones).",
+    "The root motion comes from SMPL-X 'pelvis' (trans + rot). Our game neutralises Hips X/Z drift for in-place clips via bodyPose() in character.js, so root translation is optional."
+  ]
+}

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Motion Capture Webcam — Marshmallow</title>
+<style>
+  html,body{margin:0;height:100%;background:#eef1f4;font-family:system-ui,sans-serif;color:#222;overflow:hidden}
+  #c{display:block;width:100vw;height:100vh}
+  .panel{position:fixed;background:rgba(255,255,255,.95);border:1px solid #ddd;border-radius:10px;
+         padding:10px 12px;font-size:13px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+  #ctrl{top:12px;left:12px;width:230px}
+  #cam{bottom:12px;left:12px;width:240px;padding:6px}
+  #cam video{width:228px;border-radius:6px;transform:scaleX(-1);background:#000}
+  b{font-size:15px}
+  button{cursor:pointer;font:inherit;padding:6px 10px;border:1px solid #ccc;border-radius:7px;background:#ffd34d;border-color:#e3b93a;margin:3px 2px}
+  button.rec{background:#ff5a5a;border-color:#e23;color:#fff}
+  button.sec{background:#fff}
+  label{display:block;margin:8px 0 2px;font-size:12px;color:#555}
+  input[type=text]{width:150px;padding:4px 6px;border:1px solid #ccc;border-radius:6px}
+  .chk{display:flex;align-items:center;gap:6px;margin:5px 0;font-size:12px}
+  #status{margin-top:8px;font-size:12px;color:#666;min-height:32px}
+  .hint{font-size:11px;color:#999;margin-top:4px;line-height:1.3}
+  #guide{position:fixed;inset:0;display:none;align-items:center;justify-content:center;pointer-events:none;z-index:50}
+  #guide.on{display:flex}
+  #guide svg{height:82vh;filter:drop-shadow(0 4px 16px rgba(0,0,0,.25))}
+  #count{position:absolute;font-size:20vh;font-weight:800;color:#fff;-webkit-text-stroke:4px #5cb83c;text-shadow:0 6px 30px rgba(0,0,0,.45)}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ctrl" class="panel">
+  <b>🎥 Mocap webcam</b>
+  <div class="hint">Mets-toi face à la caméra, tout le corps visible. Le bonhomme copie tes mouvements.</div>
+  <button id="start">Activer la caméra</button>
+  <label>Nom de l'emote</label>
+  <input id="name" type="text" value="mon_move" />
+  <div>
+    <button id="rec" class="rec" disabled>● Enregistrer</button>
+    <button id="play" class="sec" disabled>▶ Rejouer</button>
+  </div>
+  <button id="save" class="sec" disabled>💾 Exporter GLB</button>
+  <label>Calibration</label>
+  <button id="calib" style="background:#7ed957;border-color:#5cb83c;color:#063;font-weight:600;width:100%">🧍 Calibrer (A-pose, 5s)</button>
+  <div class="hint">Clique : 5s de compte à rebours + une silhouette à imiter (bras le long du corps, légèrement écartés). Place-toi dedans avant la fin.</div>
+  <div style="margin-top:6px"><button id="mirror" class="sec">🪞 Mode miroir</button></div>
+  <div id="adj" class="hint" style="margin-top:6px">Ajustements si besoin :
+    <button id="flipX" class="sec" style="padding:2px 6px">↔</button>
+    <button id="flipY" class="sec" style="padding:2px 6px">↕</button>
+    <button id="flipZ" class="sec" style="padding:2px 6px">⤢</button>
+    <button id="swapXZ" class="sec" style="padding:2px 6px">⟲90°</button>
+  </div>
+  <div id="status">Clique « Activer la caméra ».</div>
+</div>
+
+<div id="cam" class="panel"><video id="video" autoplay playsinline muted></video></div>
+
+<div id="guide">
+  <svg viewBox="0 0 200 360">
+    <g fill="none" stroke="#7ed957" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 16">
+      <circle cx="100" cy="42" r="26"/>
+      <line x1="100" y1="70" x2="100" y2="208"/>
+      <line x1="100" y1="96" x2="46" y2="212"/>
+      <line x1="100" y1="96" x2="154" y2="212"/>
+      <line x1="100" y1="206" x2="70" y2="346"/>
+      <line x1="100" y1="206" x2="130" y2="346"/>
+    </g>
+  </svg>
+  <div id="count">5</div>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// ---------- scene ----------
+const canvas = document.getElementById("c");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xeef1f4);
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const kl = new THREE.DirectionalLight(0xffffff, 1.5); kl.position.set(3, 6, 4); scene.add(kl);
+scene.add(new THREE.GridHelper(20, 20, 0xccd2da, 0xe2e7ee));
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, 100);
+camera.position.set(0, 1.0, 4.4);
+const controls = new OrbitControls(camera, canvas); controls.target.set(0, 0.95, 0); controls.enableDamping = true; controls.update();
+addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// ---------- marshmallow ----------
+const bones = {}, axisLocal = {};
+let root = null, ready = false;
+// bone -> {child bone used for the bone's own direction, MediaPipe from/to landmarks}
+const MAP = [
+  { bone: "LeftArm", child: "LeftForeArm", from: 11, to: 13 },
+  { bone: "LeftForeArm", child: "LeftHand", from: 13, to: 15 },
+  { bone: "RightArm", child: "RightForeArm", from: 12, to: 14 },
+  { bone: "RightForeArm", child: "RightHand", from: 14, to: 16 },
+  { bone: "LeftUpLeg", child: "LeftLeg", from: 23, to: 25 },
+  { bone: "LeftLeg", child: "LeftFoot", from: 25, to: 27 },
+  { bone: "RightUpLeg", child: "RightLeg", from: 24, to: 26 },
+  { bone: "RightLeg", child: "RightFoot", from: 26, to: 28 },
+  { bone: "Spine02", child: "Spine01", from: "hipC", to: "shC" },
+  { bone: "Head", child: "head_end", from: "shC", to: 0 },
+];
+const statusEl = document.getElementById("status");
+function setStatus(t) { statusEl.textContent = t; }
+
+new GLTFLoader().load("/assets/marshmallow_rigged.glb", (gltf) => {
+  root = gltf.scene;
+  root.traverse(o => { if (o.material) { o.material.metalness = 0; o.material.roughness = 0.9; } o.frustumCulled = false; if (o.isBone) bones[o.name] = o; });
+  // normalise height to ~1.8 and feet on grid
+  root.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(root); const sz = box.getSize(new THREE.Vector3());
+  if (sz.y > 1e-4) root.scale.setScalar(1.8 / sz.y); root.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(root); root.position.y -= box.min.y;
+  scene.add(root);
+  for (const m of MAP) { const c = bones[m.child]; if (bones[m.bone] && c) axisLocal[m.bone] = c.position.clone().normalize(); }
+  for (const n in bones) restQuat[n] = bones[n].quaternion.clone();
+  if (bones.Hips) { baseHipsPos = bones.Hips.position.clone(); const ws = new THREE.Vector3(); bones.Hips.parent.getWorldScale(ws); invHipScale = ws.y > 1e-6 ? 1 / ws.y : 1; }
+  setTPose();   // avatar starts in an A-pose so you can match it for calibration
+  ready = true; setStatus("Modèle en A-pose. Active la caméra, puis Calibrer (5s).");
+}, undefined, e => setStatus("Erreur modèle: " + e));
+
+// ---------- pose driving ----------
+const restQuat = {};
+const _pq = new THREE.Quaternion(), _pqi = new THREE.Quaternion(), _tq = new THREE.Quaternion(), _des = new THREE.Quaternion();
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3();
+// calibration: per-axis sign + optional X/Z swap (loaded from localStorage)
+const cal = Object.assign({ x: -1, y: -1, z: -1, swapXZ: false, mirror: true }, JSON.parse(localStorage.getItem("mocapCal") || "{}"));
+function saveCal() { localStorage.setItem("mocapCal", JSON.stringify(cal)); refreshCalBtns(); }
+function refreshCalBtns() {
+  document.getElementById("flipX").style.background = cal.x < 0 ? "#ffd34d" : "#fff";
+  document.getElementById("flipY").style.background = cal.y < 0 ? "#ffd34d" : "#fff";
+  document.getElementById("flipZ").style.background = cal.z < 0 ? "#ffd34d" : "#fff";
+  document.getElementById("swapXZ").style.background = cal.swapXZ ? "#ffd34d" : "#fff";
+  document.getElementById("mirror").style.background = cal.mirror ? "#7ed957" : "#fff";
+}
+document.getElementById("flipX").onclick = () => { cal.x *= -1; saveCal(); };
+document.getElementById("flipY").onclick = () => { cal.y *= -1; saveCal(); };
+document.getElementById("flipZ").onclick = () => { cal.z *= -1; saveCal(); };
+document.getElementById("swapXZ").onclick = () => { cal.swapXZ = !cal.swapXZ; saveCal(); };
+document.getElementById("mirror").onclick = () => { cal.mirror = !cal.mirror; saveCal(); };
+document.getElementById("calib").onclick = () => calibrate();
+refreshCalBtns();
+
+const _tmp = new THREE.Vector3();
+function V(x, y, z) { return new THREE.Vector3(x, y, z); }
+function mid(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 }; }
+// mirror mode: swap left/right landmarks so the avatar mirrors you like a real mirror
+const MIR = { 11: 12, 12: 11, 13: 14, 14: 13, 15: 16, 16: 15, 23: 24, 24: 23, 25: 26, 26: 25, 27: 28, 28: 27 };
+function mir(i) { return (cal.mirror && MIR[i] !== undefined) ? MIR[i] : i; }
+
+function P(L, i) { // landmark (+ virtual hip/shoulder centers) -> world, with calibration
+  let p;
+  if (i === "hipC") p = mid(L[mir(23)], L[mir(24)]); else if (i === "shC") p = mid(L[mir(11)], L[mir(12)]); else p = L[mir(i)];
+  let x = p.x, z = p.z;
+  if (cal.swapXZ) { const t = x; x = z; z = t; }
+  return _tmp.set(cal.x * x, cal.y * p.y, cal.z * z);
+}
+
+// T-pose reference: the avatar starts in this pose; you stand the same; "Calibrer"
+// computes, per bone, the rotation that aligns YOUR limb direction to the avatar's
+// T-pose direction → fixes axis/orientation AND the twisted limbs automatically.
+function VN(x, y, z) { return new THREE.Vector3(x, y, z).normalize(); }
+// A-POSE reference: arms hang down and slightly out (~30°), legs down.
+const tposeDir = {
+  LeftArm: VN(0.55, -1, 0), LeftForeArm: VN(0.55, -1, 0), RightArm: VN(-0.55, -1, 0), RightForeArm: VN(-0.55, -1, 0),
+  LeftUpLeg: VN(0.1, -1, 0), LeftLeg: VN(0.05, -1, 0), RightUpLeg: VN(-0.1, -1, 0), RightLeg: VN(-0.05, -1, 0),
+  Spine02: VN(0, 1, 0), Head: VN(0, 1, 0),
+};
+const Qcal = {};   // per-bone calibration rotation
+let lastLM = null;
+
+function aimBone(b, ax, dir, smooth) {
+  b.parent.updateWorldMatrix(true, false); b.parent.getWorldQuaternion(_pq); _pqi.copy(_pq).invert();
+  _tq.setFromUnitVectors(ax, dir); _des.copy(_pqi).multiply(_tq); b.quaternion.slerp(_des, smooth);
+}
+function setTPose() { for (const m of MAP) { const b = bones[m.bone], ax = axisLocal[m.bone]; if (b && ax && tposeDir[m.bone]) aimBone(b, ax, tposeDir[m.bone], 1); } }
+// ---- root / jump tracking (uses normalized IMAGE landmarks) ----
+let baseHipsPos = null, invHipScale = 1, curHipImgY = 0.5, curHipImgX = 0.5, baseHipImgY = null, baseHipImgX = 0.5;
+const JUMP_SCALE = 3.5, SIDE_SCALE = 2.2;
+function driveRoot(N) {
+  if (!N[23] || !N[24] || !baseHipsPos || !bones.Hips) return;
+  curHipImgY = (N[23].y + N[24].y) / 2; curHipImgX = (N[23].x + N[24].x) / 2;
+  if (baseHipImgY == null) return;
+  const dyW = (baseHipImgY - curHipImgY) * JUMP_SCALE;           // jump up -> hip higher in image -> +
+  const dxW = (curHipImgX - baseHipImgX) * (cal.mirror ? -1 : 1) * SIDE_SCALE;
+  const hp = bones.Hips.position;
+  hp.y = baseHipsPos.y + Math.max(-0.35, dyW) * invHipScale;     // bone units; clamp so it can't sink
+  hp.x = baseHipsPos.x + dxW * invHipScale;
+}
+
+let counting = false;
+function doCalibrate() {
+  if (!lastLM) { setStatus("Pas de pose détectée — mets-toi bien dans le cadre."); return; }
+  for (const m of MAP) {
+    const from = P(lastLM, m.from).clone(), to = P(lastLM, m.to).clone();
+    const ud = to.sub(from); if (ud.lengthSq() < 1e-6) continue; ud.normalize();
+    Qcal[m.bone] = new THREE.Quaternion().setFromUnitVectors(ud, tposeDir[m.bone]);
+  }
+  baseHipImgY = curHipImgY; baseHipImgX = curHipImgX;            // jump baseline
+  setStatus("Calibré ✓ — bouge, saute, le bonhomme te suit !");
+}
+function calibrate() {
+  if (counting) return;
+  counting = true;
+  const guide = document.getElementById("guide"), count = document.getElementById("count");
+  guide.classList.add("on"); let n = 5; count.textContent = n; setStatus("Place-toi dans la silhouette…");
+  const iv = setInterval(() => {
+    n--; if (n > 0) count.textContent = n;
+    else { clearInterval(iv); guide.classList.remove("on"); counting = false; doCalibrate(); }
+  }, 1000);
+}
+
+function driveFromPose(L, smooth = 0.45) {
+  lastLM = L;
+  for (const m of MAP) {
+    const b = bones[m.bone], ax = axisLocal[m.bone]; if (!b || !ax) continue;
+    const from = P(L, m.from).clone(), to = P(L, m.to).clone();
+    _d.copy(to).sub(from); if (_d.lengthSq() < 1e-6) continue; _d.normalize();
+    if (Qcal[m.bone]) _d.applyQuaternion(Qcal[m.bone]);   // align via T-pose calibration
+    aimBone(b, ax, _d, smooth);
+  }
+}
+function resetPose() { for (const n in restQuat) if (bones[n]) bones[n].quaternion.copy(restQuat[n]); if (bones.Hips && baseHipsPos) bones.Hips.position.copy(baseHipsPos); }
+
+// expose for synthetic testing (no webcam needed)
+window.__mocap = { driveFromPose, driveRoot, bones, axisLocal, resetPose, P, cal, setTPose, calibrate, doCalibrate, Qcal, tposeDir, MAP,
+  _test: { pushFrame: () => { recStart = recStart || performance.now(); recordFrame(); }, build: () => buildClip(), frames: () => frames, setLastLM: (L) => { lastLM = L; } } };
+
+// ---------- webcam + MediaPipe ----------
+const video = document.getElementById("video");
+let poseLM = null, running = false, lastT = -1;
+async function startCam() {
+  setStatus("Chargement de MediaPipe…");
+  const { PoseLandmarker, FilesetResolver } = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14");
+  const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  poseLM = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task", delegate: "GPU" },
+    runningMode: "VIDEO", numPoses: 1,
+  });
+  setStatus("Accès caméra…");
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+  video.srcObject = stream; await video.play();
+  running = true; document.getElementById("rec").disabled = false;
+  setStatus("Caméra active — bouge ! (tout le corps dans le cadre)");
+}
+function poseLoop() {
+  if (running && poseLM && video.readyState >= 2) {
+    const t = performance.now();
+    if (video.currentTime !== lastT) {
+      lastT = video.currentTime;
+      const res = poseLM.detectForVideo(video, t);
+      if (res.worldLandmarks && res.worldLandmarks[0]) {
+        driveFromPose(res.worldLandmarks[0]);
+        if (res.landmarks && res.landmarks[0]) driveRoot(res.landmarks[0]);
+        if (recording) recordFrame();
+      }
+    }
+  }
+}
+document.getElementById("start").onclick = () => startCam().catch(e => setStatus("Erreur caméra/MediaPipe: " + (e.message || e)));
+
+// ---------- recording ----------
+let recording = false, recStart = 0, frames = [], recClip = null;
+const recBones = MAP.map(m => m.bone);
+function recordFrame() {
+  const t = (performance.now() - recStart) / 1000;
+  const snap = { t, q: {}, hips: bones.Hips ? bones.Hips.position.clone() : null };
+  for (const n of recBones) if (bones[n]) snap.q[n] = bones[n].quaternion.clone();
+  frames.push(snap);
+}
+document.getElementById("rec").onclick = (e) => {
+  if (!recording) { recording = true; frames = []; recStart = performance.now(); e.target.textContent = "■ Stop"; setStatus("Enregistrement… refais ton mouvement."); }
+  else {
+    recording = false; e.target.textContent = "● Enregistrer";
+    recClip = buildClip(); document.getElementById("play").disabled = false; document.getElementById("save").disabled = false;
+    setStatus(`Enregistré: ${frames.length} images, ${(frames.length ? frames[frames.length - 1].t : 0).toFixed(1)}s. Rejoue ou exporte.`);
+  }
+};
+function buildClip() {
+  if (frames.length < 2) return null;
+  const times = frames.map(f => f.t);
+  const tracks = [];
+  for (const n of recBones) {
+    if (!frames[0].q[n]) continue;
+    const vals = [];
+    for (const f of frames) { const q = f.q[n]; vals.push(q.x, q.y, q.z, q.w); }
+    tracks.push(new THREE.QuaternionKeyframeTrack(`${n}.quaternion`, times, vals));
+  }
+  if (frames[0].hips) {   // root/jump track
+    const pv = [];
+    for (const f of frames) { const p = f.hips || frames[0].hips; pv.push(p.x, p.y, p.z); }
+    tracks.push(new THREE.VectorKeyframeTrack("Hips.position", times, pv));
+  }
+  return new THREE.AnimationClip("mocap", times[times.length - 1], tracks);
+}
+
+// ---------- playback ----------
+let mixer = null, action = null;
+document.getElementById("play").onclick = () => {
+  if (!recClip) return; running = false;
+  if (!mixer) mixer = new THREE.AnimationMixer(root);
+  if (action) action.stop();
+  resetPose();
+  action = mixer.clipAction(recClip); action.reset(); action.setLoop(THREE.LoopRepeat); action.play();
+  setStatus("Lecture de l'enregistrement (boucle).");
+};
+
+// ---------- export GLB ----------
+document.getElementById("save").onclick = () => {
+  if (!recClip) return;
+  const name = (document.getElementById("name").value || "mon_move").replace(/[^a-z0-9_]/gi, "");
+  new GLTFExporter().parse(root, (glb) => {
+    const blob = new Blob([glb], { type: "model/gltf-binary" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `marshmallow_${name}.glb`; a.click();
+    setStatus(`Exporté marshmallow_${name}.glb — mets-le dans assets/ et ajoute-le aux EMOTES (ou envoie-le moi).`);
+  }, (err) => setStatus("Erreur export: " + err), { binary: true, animations: recClip ? [recClip] : [] });
+};
+
+// ---------- loop ----------
+const clock = new THREE.Clock();
+function step() { poseLoop(); if (mixer) mixer.update(clock.getDelta()); controls.update(); renderer.render(scene, camera); }
+function raf() { requestAnimationFrame(raf); if (document.visibilityState === "visible") step(); }
+raf();
+setInterval(() => { if (document.visibilityState !== "visible") step(); }, 40);
+</script>
+</body>
+</html>

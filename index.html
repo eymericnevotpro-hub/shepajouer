@@ -2,55 +2,30 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Shepa Jouer</title>
+<meta name="description" content="Jeu d'ambiance type « longueur d'onde » — un proposeur donne un indice, les autres visent sur le cadran. Crée une partie, invite tes potes par code." />
+<meta name="theme-color" content="#FFF3DF" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Shepa Jouer" />
+<meta property="og:description" content="Un indice, un cadran, vise juste ! Jeu d'ambiance entre potes." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Space+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css" />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/css/styles.css" />
 </head>
 <body>
-<canvas id="canvas"></canvas>
+<div id="app" aria-live="polite"></div>
+<div id="confetti" aria-hidden="true"></div>
+<button id="mute" class="mute-btn" aria-label="Couper ou activer le son" title="Son">🔊</button>
 
-<div id="ui">
-  <!-- HOME -->
-  <section id="home" class="screen">
-    <div class="logo">
-      <div class="logo-line1">SHEPA</div>
-      <div class="logo-line2">JOUER</div>
-    </div>
-    <div class="sub">// 3D · entre potes · code d'invite</div>
-    <div id="home-actions" class="actions">
-      <button id="btn-host" class="btn acid">+ Créer une partie</button>
-      <button id="btn-join" class="btn ghost">Rejoindre avec un code</button>
-    </div>
-    <div id="join-form" class="actions hidden">
-      <input id="code-input" class="code-input" placeholder="CODE" maxlength="6" autocomplete="off" />
-      <button id="btn-join-go" class="btn acid">Rejoindre</button>
-      <button id="btn-join-back" class="btn xs ghost">← Annuler</button>
-    </div>
-    <div id="connect-status" class="status hidden"></div>
-  </section>
-
-  <!-- IN-GAME HUD -->
-  <section id="game" class="screen hidden">
-    <div id="hud">
-      <div class="pill">SALON · <span id="code-pill" class="v"></span>
-        <button id="btn-copy" class="copy">copier</button>
-      </div>
-      <div class="pill"><span id="players-count">1</span> <span class="v">en ligne</span></div>
-    </div>
-    <div id="controls" class="pill controls">
-      <div><span class="key">Z</span><span class="key">Q</span><span class="key">S</span><span class="key">D</span> bouger</div>
-      <div><span class="key">␣</span> sauter</div>
-    </div>
-    <button id="btn-leave" class="btn xs ghost leave">← Quitter</button>
-    <div id="toast" class="toast hidden"></div>
-  </section>
-</div>
-
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="app.js"></script>
+<script src="assets/js/data.js" defer></script>
+<script src="assets/js/store.js" defer></script>
+<script src="assets/js/audio.js" defer></script>
+<script src="assets/js/cadran.js" defer></script>
+<script src="assets/js/avatar.js" defer></script>
+<script src="assets/js/game.js" defer></script>
+<script src="assets/js/screens.js" defer></script>
+<script src="assets/js/app.js" defer></script>
 </body>
 </html>

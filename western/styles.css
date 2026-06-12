@@ -1,14 +1,15 @@
 :root {
-  --bg: #0e0e10;
-  --ink: #f1ece4;
-  --ink-2: #a8a39c;
-  --ink-3: #6a6660;
-  --line: #34343f;
-  --surface: #1d1d24;
-  --acid: oklch(0.86 0.20 130);
-  --pink: oklch(0.72 0.22 350);
+  --bg: #1c1209;
+  --ink: #f3e4c8;
+  --ink-2: #c9a36f;
+  --ink-3: #8a6a40;
+  --line: #5a3f24;
+  --surface: #2a1c0e;
+  --gold: #e0b84a;
+  --rust: #b5462f;
+  --green: #5a7a3f;
 
-  --font-display: "Bungee", system-ui, sans-serif;
+  --font-display: "Rye", "Georgia", serif;
   --font-body: "Space Grotesk", system-ui, sans-serif;
   --font-mono: "DM Mono", "Courier New", monospace;
 }
@@ -49,39 +50,44 @@ button { font-family: inherit; cursor: pointer; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 32px;
+  gap: 28px;
   background:
-    radial-gradient(800px 500px at 80% 20%, oklch(0.72 0.22 350 / 0.18), transparent 60%),
-    radial-gradient(700px 400px at 15% 80%, oklch(0.86 0.20 130 / 0.14), transparent 65%),
-    #0a0a0c;
+    radial-gradient(900px 600px at 50% 18%, rgba(224,184,74,0.22), transparent 60%),
+    radial-gradient(700px 500px at 20% 90%, rgba(181,70,47,0.18), transparent 65%),
+    linear-gradient(180deg, #3a2410 0%, #1c1209 70%);
 }
 
 #home::before {
   content: "";
   position: absolute; inset: 0;
   background-image:
-    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-  background-size: 48px 48px;
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 14px);
   pointer-events: none;
-  mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+  opacity: 0.5;
 }
 
 .logo {
   font-family: var(--font-display);
-  font-size: clamp(64px, 12vw, 168px);
-  letter-spacing: -2px;
-  line-height: 0.85;
+  font-size: clamp(56px, 11vw, 150px);
+  letter-spacing: 1px;
+  line-height: 0.92;
   text-align: center;
   z-index: 1;
 }
-.logo-line1 { color: var(--ink); }
+.logo-line1 { color: var(--ink); text-shadow: 3px 3px 0 #000; }
 .logo-line2 {
-  color: var(--acid);
-  -webkit-text-stroke: 1px #000;
-  text-shadow: 6px 6px 0 var(--pink), 12px 12px 0 #000;
+  color: var(--gold);
+  -webkit-text-stroke: 1px #3a2410;
+  text-shadow: 5px 5px 0 var(--rust), 9px 9px 0 #000;
   display: inline-block;
-  transform: translateX(20px);
+}
+.logo-badge {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.4em;
+  color: var(--gold);
+  margin-top: 14px;
+  text-shadow: 1px 1px 0 #000;
 }
 
 .sub {
@@ -104,33 +110,33 @@ button { font-family: inherit; cursor: pointer; }
 .btn {
   font-family: var(--font-display);
   font-size: 18px;
-  padding: 18px 24px;
-  border: 2px solid var(--ink);
+  padding: 16px 24px;
+  border: 2px solid #3a2410;
   background: var(--ink);
-  color: #0a0a0c;
-  letter-spacing: 0.04em;
+  color: #2a1c0e;
+  letter-spacing: 0.02em;
   box-shadow: 4px 4px 0 #000;
   transition: transform 80ms ease, box-shadow 120ms ease;
   text-align: center;
 }
-.btn:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--acid); }
+.btn:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--gold); }
 .btn:active { transform: translate(1px,1px); box-shadow: 2px 2px 0 #000; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn.acid { background: var(--acid); color: #0a0a0c; border-color: var(--acid); }
+.btn.acid { background: var(--gold); color: #2a1c0e; border-color: #3a2410; }
 .btn.ghost {
   background: transparent;
   color: var(--ink);
-  border-color: var(--ink);
-  box-shadow: 4px 4px 0 var(--pink);
+  border-color: var(--ink-3);
+  box-shadow: 4px 4px 0 var(--rust);
 }
-.btn.ghost:hover { box-shadow: 6px 6px 0 var(--pink); }
+.btn.ghost:hover { box-shadow: 6px 6px 0 var(--rust); }
 .btn.xs { font-family: var(--font-body); font-weight: 700; font-size: 12px; padding: 6px 10px; box-shadow: 2px 2px 0 #000; }
 
 .code-input {
   font-family: var(--font-mono);
   font-size: 26px;
-  background: #0a0a0c;
+  background: #140c05;
   border: 2px solid var(--line);
   color: var(--ink);
   padding: 14px 18px;
@@ -140,7 +146,7 @@ button { font-family: inherit; cursor: pointer; }
   text-align: center;
   width: 100%;
 }
-.code-input:focus { border-color: var(--acid); }
+.code-input:focus { border-color: var(--gold); }
 
 .status {
   font-family: var(--font-mono);
@@ -151,8 +157,8 @@ button { font-family: inherit; cursor: pointer; }
   z-index: 1;
   text-align: center;
 }
-.status.error { color: var(--pink); }
-.status.ok { color: var(--acid); }
+.status.error { color: var(--rust); }
+.status.ok { color: var(--gold); }
 
 /* ===== IN-GAME HUD ===== */
 #game { pointer-events: none; }
@@ -166,7 +172,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .pill {
-  background: rgba(10,10,12,0.85);
+  background: rgba(20,12,5,0.85);
   border: 1px solid var(--line);
   font-family: var(--font-mono);
   text-transform: uppercase;
@@ -178,7 +184,7 @@ button { font-family: inherit; cursor: pointer; }
   align-items: center;
   gap: 6px;
 }
-.pill .v { color: var(--acid); }
+.pill .v { color: var(--gold); }
 .copy {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -190,7 +196,7 @@ button { font-family: inherit; cursor: pointer; }
   letter-spacing: 0.1em;
   cursor: pointer;
 }
-.copy:hover { border-color: var(--acid); }
+.copy:hover { border-color: var(--gold); }
 
 .controls {
   position: absolute;
@@ -215,14 +221,61 @@ button { font-family: inherit; cursor: pointer; }
   top: 16px; right: 16px;
 }
 
+.mic {
+  position: absolute;
+  top: 52px; right: 16px;
+}
+.mic.muted { box-shadow: 2px 2px 0 #000; opacity: 0.7; }
+
+/* red flash when the local player is hit */
+.hit-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 160px 40px rgba(200, 30, 20, 0.75);
+  background: rgba(180, 20, 15, 0.18);
+}
+.hit-flash.flash { animation: hitFade 0.32s ease-out; }
+@keyframes hitFade { from { opacity: 1; } to { opacity: 0; } }
+
+/* crosshair (first-person) */
+#crosshair {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 6px; height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(243,228,200,0.7);
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+
+.lock-hint {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, 40px);
+  pointer-events: none; /* let the click pass through to the canvas to re-capture the mouse */
+  background: rgba(20,12,5,0.9);
+  border: 1px solid var(--gold);
+  color: var(--ink);
+  padding: 12px 20px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+.lock-hint span { color: var(--ink-2); font-size: 11px; }
+
 .toast {
   position: absolute;
   top: 60px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--surface);
-  border: 1px solid var(--acid);
-  color: var(--acid);
+  border: 1px solid var(--gold);
+  color: var(--gold);
   padding: 10px 16px;
   font-family: var(--font-mono);
   font-size: 12px;

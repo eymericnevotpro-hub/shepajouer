@@ -1,40 +1,59 @@
 # Shepa Jouer
 
-Mini-monde 3D entre potes — caméra 3ᵉ personne, ZQSD + saut, invitation par code.
+Jeu d'ambiance entre potes type **« longueur d'onde » / Wavelength** : un proposeur reçoit un thème (ex. ❄️ Froid → Chaud 🔥) et une **cible placée au hasard** sur un demi-cercle ; il donne un indice, les autres glissent leur aiguille pour viser la zone. Plus on est proche du centre, plus on marque (zones **+4 / +3 / +2**).
+
+Style **« 3D bouncy coloré »** (palette bonbon, typo Baloo, boutons 3D « poussés ») — implémenté pixel-perfect depuis un handoff Claude Design.
 
 ## Lancer en local
 
-Site statique. Sers le dossier avec n'importe quel HTTP server :
+Site statique, aucun build :
 
 ```bash
-python -m http.server 8765
+npx http-server . -p 8765 -c-1
 # puis ouvre http://localhost:8765
 ```
 
-## Contrôles
+## Les écrans (8)
 
-- **ZQSD / WASD / flèches** : bouger
-- **Espace** : sauter
-- **Caméra** : 3ᵉ personne, suit le perso
+Accueil · Avatar (à dessiner) · Lobby (code + réglages) · Proposeur · Devineur · Révélation · Podium · Boutique.
 
-## Multijoueur
+## Comment ça marche
 
-WebRTC P2P via PeerJS — pas de backend.
+- **Le proposeur** voit le thème, sa cible est **tirée au hasard**, il écrit/dit un indice.
+- **Les devineurs** placent leur aiguille (glisser au doigt/souris), avec wobble élastique.
+- **Score** : écart angulaire à la cible → +4 (≤5°), +3 (≤15°), +2 (≤25°), sinon 0. Le proposeur marque si les autres trouvent.
+- **Pièces 🪙** gagnées en jouant → boutique (chapeaux, fonds, aiguilles, confettis). Jamais en payant.
+- **Durée** : Courte (7 tours) · Normale (10) · Longue (15).
 
-1. Joueur A clique **Créer une partie** → reçoit un code à 5 caractères
-2. A partage le code (bouton "copier")
-3. Joueur B colle le code dans **Rejoindre avec un code**
-4. Position synchronisée en temps réel (~20Hz)
+## Mode de jeu
 
-Le broker PeerJS public sert juste à la négociation initiale; ensuite c'est du WebRTC direct.
+- **v1 (en prod)** : jouable en **solo + bots** sur un seul appareil. Crée une partie → un code est généré pour inviter (le multi en ligne arrive en phase 2).
+- **Phase 2** : multijoueur en ligne **par code** via WebRTC P2P (PeerJS), sans backend — les potes rejoignent et pop dans le lobby en temps réel.
 
 ## Stack
 
-- HTML + CSS + JS vanilla (aucun build)
-- [Three.js](https://threejs.org/) — rendu 3D
-- [PeerJS](https://peerjs.com/) — multijoueur P2P
+- HTML + CSS + JS vanilla (aucun build, aucune dépendance)
+- Web Audio API pour les effets sonores (synthétisés, aucun fichier)
+- Canvas pour l'avatar à dessiner · localStorage pour pseudo / pièces / items
 - Déployé sur Vercel comme site statique
 
-## Archive
+## Structure
 
-L'ancien prototype Skool (3 mini-jeux + squat 2.5D voxel) est conservé dans `.archive/` pour référence.
+```
+index.html              # shell
+assets/css/styles.css   # design system « bouncy »
+assets/js/
+  data.js     # thèmes (packs), boutique, avatars, bots
+  store.js    # persistance localStorage
+  audio.js    # effets sonores Web Audio
+  cadran.js   # demi-cercle interactif + scoring
+  avatar.js   # zone de dessin
+  game.js     # moteur de partie (manches, bots, scores)
+  screens.js  # rendu des 8 écrans + navigation
+  app.js      # démarrage
+```
+
+## Archives
+
+- `western/` — précédent prototype « Far West » (Three.js 3D + PeerJS).
+- `.archive/` — ancien prototype Skool (mini-jeux + squat voxel).

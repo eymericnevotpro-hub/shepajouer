@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Poseur de squelette — Marshmallow</title>
+<style>
+  html,body{margin:0;height:100%;background:#f0f2f5;font-family:system-ui,sans-serif;color:#222;overflow:hidden}
+  #c{display:block;width:100vw;height:100vh}
+  #ui{position:fixed;top:12px;left:12px;background:rgba(255,255,255,.95);border:1px solid #ddd;border-radius:10px;
+      padding:10px 12px;font-size:13px;box-shadow:0 2px 12px rgba(0,0,0,.12);max-width:240px}
+  b{font-size:15px}
+  button{cursor:pointer;font:inherit;padding:5px 9px;border:1px solid #ccc;border-radius:7px;background:#fff;margin:3px 2px}
+  button.on{background:#ffd34d;border-color:#e3b93a}
+  .hint{font-size:11px;color:#888;margin-top:6px;line-height:1.35}
+  #sel{font-weight:600;color:#a36;margin-top:6px;min-height:18px}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <b>🦴 Poseur de squelette</b>
+  <div class="hint">Clique une boule (articulation), une poignée apparaît : tire pour bouger l'os. Glisse le fond pour tourner la vue.</div>
+  <div style="margin-top:8px">
+    <button id="mRot" class="on">Tourner</button>
+    <button id="mPos">Déplacer (étire)</button>
+  </div>
+  <div>
+    <button id="deselect">Désélectionner</button>
+    <button id="reset">Tout réinitialiser</button>
+  </div>
+  <div id="sel">Aucun os sélectionné</div>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
+
+const canvas = document.getElementById("c");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf0f2f5);
+scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+const kl = new THREE.DirectionalLight(0xffffff, 1.4); kl.position.set(3, 6, 4); scene.add(kl);
+scene.add(new THREE.GridHelper(20, 20, 0xccd2da, 0xe3e8ef));
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, 100);
+camera.position.set(1.6, 1.2, 4.2);
+const orbit = new OrbitControls(camera, canvas); orbit.target.set(0, 0.95, 0); orbit.enableDamping = true; orbit.update();
+addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+const tcontrols = new TransformControls(camera, renderer.domElement);
+tcontrols.setSpace("local"); tcontrols.setSize(0.8);
+tcontrols.addEventListener("dragging-changed", e => orbit.enabled = !e.value);
+scene.add(tcontrols);
+
+const handles = [];     // {mesh, bone}
+const baseQ = {}, baseP = {};
+let root = null;
+
+new GLTFLoader().load("/assets/marshmallow_rigged.glb", (gltf) => {
+  root = gltf.scene;
+  root.traverse(o => { if (o.material) { o.material.metalness = 0; o.material.roughness = 0.9; o.material.transparent = true; o.material.opacity = 0.92; } o.frustumCulled = false; });
+  root.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(root); const sz = box.getSize(new THREE.Vector3());
+  if (sz.y > 1e-4) root.scale.setScalar(1.8 / sz.y); root.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(root); root.position.y -= box.min.y;
+  scene.add(root);
+  // a clickable handle sphere on every bone joint
+  const hGeo = new THREE.SphereGeometry(0.05, 16, 12);
+  const hMat = new THREE.MeshBasicMaterial({ color: 0xff5a8a });
+  root.traverse(o => {
+    if (o.isBone && !/Armature|char1|_end|front/.test(o.name)) {
+      baseQ[o.name] = o.quaternion.clone(); baseP[o.name] = o.position.clone();
+      const h = new THREE.Mesh(hGeo, hMat.clone());
+      h.userData.bone = o; o.add(h);            // parented to the bone -> follows it
+      h.scale.setScalar(1 / o.getWorldScale(new THREE.Vector3()).x); // keep ~constant screen size
+      handles.push(h);
+    }
+  });
+});
+
+// ---- selection by clicking a handle ----
+const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
+let selected = null;
+function selectBone(bone) {
+  selected = bone; tcontrols.attach(bone);
+  document.getElementById("sel").textContent = bone ? "Os : " + bone.name : "Aucun os sélectionné";
+  for (const h of handles) h.material.color.set(h.userData.bone === bone ? 0x35d07f : 0xff5a8a);
+}
+let down = null;
+renderer.domElement.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return; // ignore drags
+  if (tcontrols.dragging) return;
+  ndc.x = (e.clientX / innerWidth) * 2 - 1; ndc.y = -(e.clientY / innerHeight) * 2 + 1;
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects(handles, false)[0];
+  if (hit) selectBone(hit.object.userData.bone);
+});
+
+document.getElementById("mRot").onclick = () => { tcontrols.setMode("rotate"); setModeBtn("mRot"); };
+document.getElementById("mPos").onclick = () => { tcontrols.setMode("translate"); setModeBtn("mPos"); };
+function setModeBtn(id) { document.getElementById("mRot").classList.toggle("on", id === "mRot"); document.getElementById("mPos").classList.toggle("on", id === "mPos"); }
+document.getElementById("deselect").onclick = () => { tcontrols.detach(); selectBone(null); };
+document.getElementById("reset").onclick = () => {
+  for (const n in baseQ) { /* find bone */ }
+  for (const h of handles) { const b = h.userData.bone; b.quaternion.copy(baseQ[b.name]); b.position.copy(baseP[b.name]); }
+  tcontrols.detach(); selectBone(null);
+};
+addEventListener("keydown", e => { if (e.key === "r") document.getElementById("mRot").click(); if (e.key === "t") document.getElementById("mPos").click(); });
+
+// ---- loop (rAF + setInterval fallback for backgrounded tabs) ----
+function step() { orbit.update(); renderer.render(scene, camera); }
+function raf() { requestAnimationFrame(raf); if (document.visibilityState === "visible") step(); }
+raf(); setInterval(() => { if (document.visibilityState !== "visible") step(); }, 40);
+window.__pose = { handles, selectBone, scene };
+</script>
+</body>
+</html>

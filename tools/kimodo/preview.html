@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aperçu + réglage pose — Marshmallow</title>
+<style>
+  html,body{margin:0;height:100%;background:#f3f3f3;font-family:system-ui,sans-serif;color:#222;overflow:hidden}
+  #c{display:block;width:100vw;height:100vh}
+  .panel{position:fixed;background:rgba(255,255,255,.94);border:1px solid #ddd;border-radius:10px;
+         padding:10px 12px;font-size:13px;box-shadow:0 2px 12px rgba(0,0,0,.1)}
+  #top{top:12px;left:12px}
+  #tuner{top:12px;right:12px;width:300px;max-height:94vh;overflow:auto}
+  b{font-size:14px}
+  label{display:block;margin:7px 0 2px;font-size:12px;color:#555}
+  select,input,button,textarea{font:inherit}
+  select,button{padding:4px 6px;border:1px solid #ccc;border-radius:6px}
+  button{cursor:pointer;background:#ffd34d;border-color:#e3b93a}
+  .grp{font-size:11px;font-weight:700;color:#a36;margin:8px 0 2px}
+  .row{display:flex;align-items:center;gap:8px;margin:3px 0}
+  .row span.ax{width:16px;font-weight:600;color:#888}
+  .row input[type=range]{flex:1}
+  .row .val{width:46px;text-align:right;font-variant-numeric:tabular-nums;color:#444}
+  textarea{width:100%;height:120px;font-family:DM Mono,monospace;font-size:11px;border:1px solid #ccc;border-radius:6px;margin-top:6px}
+  #status{margin-top:6px;font-size:12px;color:#888}
+  .hint{font-size:11px;color:#888;margin-top:4px}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="top" class="panel">
+  <b>Aperçu animation</b>
+  <label>Fichier GLB (assets/…)</label>
+  <input id="file" size="26" />
+  <button id="load">Charger</button>
+  <div class="row" style="margin-top:6px">
+    <label style="margin:0">Clip</label>
+    <select id="clip"></select>
+    <button id="pp">⏸︎</button>
+  </div>
+  <div id="status">…</div>
+</div>
+
+<div id="tuner" class="panel">
+  <b>Réglage du squelette (os par os)</b>
+  <div class="hint">Choisis un os, puis tourne OU déplace librement (la translation étire le mesh).</div>
+  <label>Os</label>
+  <select id="bone"></select>
+
+  <div class="grp">ROTATION (radians)</div>
+  <div class="row"><span class="ax">rX</span><input id="rx" type="range" min="-3.14" max="3.14" step="0.02" /><span class="val" id="vrx">0</span></div>
+  <div class="row"><span class="ax">rY</span><input id="ry" type="range" min="-3.14" max="3.14" step="0.02" /><span class="val" id="vry">0</span></div>
+  <div class="row"><span class="ax">rZ</span><input id="rz" type="range" min="-3.14" max="3.14" step="0.02" /><span class="val" id="vrz">0</span></div>
+
+  <div class="grp">POSITION (fraction de la hauteur du corps — étire le mesh)</div>
+  <div class="row"><span class="ax">pX</span><input id="px" type="range" min="-1" max="1" step="0.01" /><span class="val" id="vpx">0</span></div>
+  <div class="row"><span class="ax">pY</span><input id="py" type="range" min="-1" max="1" step="0.01" /><span class="val" id="vpy">0</span></div>
+  <div class="row"><span class="ax">pZ</span><input id="pz" type="range" min="-1" max="1" step="0.01" /><span class="val" id="vpz">0</span></div>
+
+  <button id="reset">Remettre cet os à 0</button>
+  <label>Valeurs à coller dans retarget_marshmallow.py</label>
+  <textarea id="out" readonly></textarea>
+  <button id="copy">Copier</button>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const params = new URLSearchParams(location.search);
+const clipParam = params.get("clip");
+const fileParam = params.get("file") || (clipParam ? `assets/marshmallow_${clipParam}.glb` : "assets/marshmallow_wave_raw.glb");
+
+// per-bone ROTATION offset (Euler XYZ rad, local) — identical to ARM_FIX in the retarget
+const rot = { "RightArm": [-0.5, 0.0, 1.0], "LeftArm": [-0.9, 0.0, 1.4] };
+// per-bone POSITION offset (fraction of body height, local) — stretches the mesh
+const pos = {};
+
+const canvas = document.getElementById("c");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf3f3f3);
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const k1 = new THREE.DirectionalLight(0xffffff, 1.6); k1.position.set(3, 6, 4); scene.add(k1);
+const k2 = new THREE.DirectionalLight(0xffffff, 0.6); k2.position.set(-4, 2, -3); scene.add(k2);
+scene.add(new THREE.GridHelper(20, 20, 0xcccccc, 0xe5e5e5));
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, 100);
+const controls = new OrbitControls(camera, canvas); controls.enableDamping = true;
+addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+const loader = new GLTFLoader();
+let mixer = null, current = null, actions = [], root = null, playing = true, nativeH = 1;
+const bones = {}, basePos = {};
+const _e = new THREE.Euler(), _q = new THREE.Quaternion(), _ws = new THREE.Vector3();
+const BODY = 1.8; // displayed body height (units) — translation is a fraction of this
+// convert a position fraction to BONE-LOCAL units (bones live in their own scale)
+function localOff(b, t) { b.parent.getWorldScale(_ws); return [t[0] * BODY / _ws.x, t[1] * BODY / _ws.y, t[2] * BODY / _ws.z]; }
+const statusEl = document.getElementById("status");
+const clipSel = document.getElementById("clip");
+const fileInp = document.getElementById("file"); fileInp.value = fileParam;
+const boneSel = document.getElementById("bone");
+const R = { x: rqs("rx", "vrx"), y: rqs("ry", "vry"), z: rqs("rz", "vrz") };
+const P = { x: rqs("px", "vpx"), y: rqs("py", "vpy"), z: rqs("pz", "vpz") };
+function rqs(s, v) { return { s: document.getElementById(s), v: document.getElementById(v) }; }
+const outTa = document.getElementById("out");
+
+function measure(obj) { obj.updateMatrixWorld(true); obj.traverse(o => { if (o.geometry) { o.geometry.computeBoundingBox(); o.geometry.computeBoundingSphere(); } }); return new THREE.Box3().setFromObject(obj); }
+function frameModel(obj) {
+  let box = measure(obj); const size = box.getSize(new THREE.Vector3());
+  nativeH = size.y || 1;                       // body height in NATIVE bone units
+  if (size.y > 1e-4) obj.scale.setScalar(1.8 / size.y);
+  box = measure(obj); const c = box.getCenter(new THREE.Vector3());
+  obj.position.y -= box.min.y; obj.position.x -= c.x; obj.position.z -= c.z;
+  controls.target.set(0, 0.95, 0); camera.position.set(1.3, 1.15, 4.3); controls.update();
+}
+function load(file) {
+  statusEl.textContent = "chargement…";
+  loader.load("/" + file.replace(/^\/+/, ""), (gltf) => {
+    if (root) scene.remove(root);
+    root = gltf.scene;
+    root.traverse(o => { if (o.material) { o.material.metalness = 0; o.material.roughness = 0.9; } o.frustumCulled = false; if (o.isBone) { bones[o.name] = o; basePos[o.name] = o.position.clone(); } });
+    scene.add(root); frameModel(root);
+    mixer = new THREE.AnimationMixer(root);
+    actions = gltf.animations.map(cl => ({ name: cl.name, clip: cl }));
+    clipSel.innerHTML = ""; actions.forEach((a, i) => { const o = document.createElement("option"); o.value = i; o.textContent = `${a.name} (${a.clip.duration.toFixed(1)}s)`; clipSel.appendChild(o); });
+    boneSel.innerHTML = "";
+    Object.keys(bones).sort().forEach(n => { const o = document.createElement("option"); o.value = n; o.textContent = n; boneSel.appendChild(o); });
+    if (bones["RightArm"]) boneSel.value = "RightArm";
+    syncSliders(); refreshOut(); playClip(0);
+    window.__pv = { THREE, scene, root, mixer, actions, bones, basePos, rot, pos, nativeH };
+    statusEl.textContent = actions.length + " clip(s) · glisse pour tourner";
+  }, undefined, e => statusEl.textContent = "ERREUR: " + (e && e.message || e));
+}
+function playClip(i) { if (!mixer || !actions[i]) return; if (current) current.stop(); current = mixer.clipAction(actions[i].clip); current.reset().play(); playing = true; mixer.timeScale = 1; document.getElementById("pp").textContent = "⏸︎"; }
+
+function curR() { return rot[boneSel.value] || (rot[boneSel.value] = [0, 0, 0]); }
+function curP() { return pos[boneSel.value] || (pos[boneSel.value] = [0, 0, 0]); }
+function syncSliders() {
+  const r = curR(), p = curP();
+  R.x.s.value = r[0]; R.y.s.value = r[1]; R.z.s.value = r[2];
+  P.x.s.value = p[0]; P.y.s.value = p[1]; P.z.s.value = p[2];
+  R.x.v.textContent = (+r[0]).toFixed(2); R.y.v.textContent = (+r[1]).toFixed(2); R.z.v.textContent = (+r[2]).toFixed(2);
+  P.x.v.textContent = (+p[0]).toFixed(2); P.y.v.textContent = (+p[1]).toFixed(2); P.z.v.textContent = (+p[2]).toFixed(2);
+}
+function refreshOut() {
+  const rl = Object.entries(rot).filter(([, v]) => v.some(x => Math.abs(x) > 1e-9)).map(([n, v]) => `    "${n}": (${v.map(x => (+x).toFixed(2)).join(", ")}),`);
+  const pl = Object.entries(pos).filter(([, v]) => v.some(x => Math.abs(x) > 1e-9)).map(([n, v]) => { const o = bones[n] ? localOff(bones[n], v) : v; return `    "${n}": (${o.map(x => (+x).toFixed(3)).join(", ")}),`; });
+  outTa.value = "ARM_FIX = {\n" + rl.join("\n") + "\n}\n\nBONE_POS = {  # unités natives\n" + pl.join("\n") + "\n}";
+}
+function onSlide() {
+  const r = curR(), p = curP();
+  r[0] = +R.x.s.value; r[1] = +R.y.s.value; r[2] = +R.z.s.value;
+  p[0] = +P.x.s.value; p[1] = +P.y.s.value; p[2] = +P.z.s.value;
+  syncSliders(); refreshOut();
+}
+[R.x, R.y, R.z, P.x, P.y, P.z].forEach(o => o.s.addEventListener("input", onSlide));
+boneSel.onchange = syncSliders;
+document.getElementById("reset").onclick = () => { rot[boneSel.value] = [0, 0, 0]; pos[boneSel.value] = [0, 0, 0]; syncSliders(); refreshOut(); };
+document.getElementById("copy").onclick = () => navigator.clipboard.writeText(outTa.value).then(() => statusEl.textContent = "Valeurs copiées ✓");
+clipSel.onchange = () => playClip(+clipSel.value);
+document.getElementById("load").onclick = () => load(fileInp.value);
+document.getElementById("pp").onclick = () => { if (!mixer) return; playing = !playing; mixer.timeScale = playing ? 1 : 0; document.getElementById("pp").textContent = playing ? "⏸︎" : "▶︎"; };
+
+function applyFixes() {
+  for (const name in rot) {
+    const b = bones[name]; if (!b) continue; const f = rot[name]; if (!(f[0] || f[1] || f[2])) continue;
+    _e.set(f[0], f[1], f[2], "XYZ"); _q.setFromEuler(_e); b.quaternion.multiply(_q);
+  }
+  for (const name in pos) {
+    const b = bones[name], bp = basePos[name]; if (!b || !bp) continue; const t = pos[name]; if (!(t[0] || t[1] || t[2])) continue;
+    const o = localOff(b, t);                                      // fraction -> bone-local units
+    b.position.set(bp.x + o[0], bp.y + o[1], bp.z + o[2]);          // local translate -> stretches skin
+  }
+}
+
+const clock = new THREE.Clock();
+function step() {
+  if (mixer) { mixer.update(clock.getDelta()); applyFixes(); }
+  controls.update();
+  renderer.render(scene, camera);
+}
+// requestAnimationFrame for smoothness when visible, + setInterval fallback so the
+// preview keeps updating even if the tab is backgrounded.
+function raf() { requestAnimationFrame(raf); if (document.visibilityState === "visible") step(); }
+raf();
+setInterval(() => { if (document.visibilityState !== "visible") step(); }, 40);
+load(fileParam);
+</script>
+</body>
+</html>

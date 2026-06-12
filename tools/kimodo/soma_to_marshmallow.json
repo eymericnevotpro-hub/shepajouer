@@ -1,0 +1,34 @@
+{
+  "_comment": "Bone mapping for retargeting a Kimodo SOMA BVH (somaskel77 skeleton, exported with --bvh) onto the Shepa Jouer marshmallow rig. Source keys = SOMA joint names (as in the BVH hierarchy). Target values = our rig bones (assets/marshmallow_rigged.glb). Most names already match, so Rokoko auto-maps them.",
+  "skeleton": "somaskel77",
+  "map": {
+    "Hips": "Hips",
+    "Spine1": "Spine",
+    "Spine2": "Spine01",
+    "Chest": "Spine02",
+    "Neck1": "neck",
+    "Head": "Head",
+    "LeftShoulder": "LeftShoulder",
+    "LeftArm": "LeftArm",
+    "LeftForeArm": "LeftForeArm",
+    "LeftHand": "LeftHand",
+    "RightShoulder": "RightShoulder",
+    "RightArm": "RightArm",
+    "RightForeArm": "RightForeArm",
+    "RightHand": "RightHand",
+    "LeftLeg": "LeftUpLeg",
+    "LeftShin": "LeftLeg",
+    "LeftFoot": "LeftFoot",
+    "LeftToeBase": "LeftToeBase",
+    "RightLeg": "RightUpLeg",
+    "RightShin": "RightLeg",
+    "RightFoot": "RightFoot",
+    "RightToeBase": "RightToeBase"
+  },
+  "notes": [
+    "SOMA 'Leg' = thigh -> our 'UpLeg'; SOMA 'Shin' = our 'Leg'.",
+    "SOMA spine is Spine1/Spine2/Chest -> our Spine/Spine01/Spine02.",
+    "SOMA Neck1 -> our 'neck' (Neck2 ignored). Finger joints (Hand*1..) ignored — our rig has none.",
+    "Generate the BVH with: kimodo_gen \"...\" --model Kimodo-SOMA-RP-v1 --bvh --bvh_standard_tpose --output out"
+  ]
+}
