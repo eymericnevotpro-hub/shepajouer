@@ -391,7 +391,10 @@ SJ.screens = (function(){
         </div>
       </section>`);
     const cats=Object.keys(SJ.SHOP);
-    const renderCats=()=> $('#cats').innerHTML=cats.map(c=>`<div class="chip catx ${c===cat?'active':''}" data-c="${c}">${c}</div>`).join('');
+    function renderCats(){
+      $('#cats').innerHTML=cats.map(c=>`<div class="chip catx ${c===cat?'active':''}" data-c="${c}">${c}</div>`).join('');
+      app().querySelectorAll('.catx').forEach(x=> x.onclick=()=>{ cat=x.dataset.c; SJ.audio.click(); renderCats(); renderGrid(); });
+    }
     const slot=c=>({Chapeaux:'hat',Fonds:'bg',Aiguilles:'needle',Confettis:'confetti'}[c]);
     function renderGrid(){
       const items=SJ.SHOP[cat]; const eq=S.get('equipped'); const sl=slot(cat);
@@ -416,7 +419,6 @@ SJ.screens = (function(){
       SJ.audio.pop(); $('#scoins').textContent=S.get('coins'); renderGrid();
     }
     renderCats(); renderGrid();
-    app().querySelectorAll('.catx').forEach(x=> x.onclick=()=>{ cat=x.dataset.c; SJ.audio.click(); renderCats(); renderGrid(); });
     $('#back').onclick=()=>{ SJ.audio.click(); refreshCoins(); home(); };
   }
 
