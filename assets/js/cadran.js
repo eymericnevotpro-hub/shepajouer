@@ -24,7 +24,8 @@ SJ.cadran = (function(){
 
   function make(opts={}){
     const theme = opts.theme || {left:'Froid', right:'Chaud', el:'❄️', er:'🔥'};
-    const svg = el('svg', {viewBox:'0 0 300 165', class:'cadran'});
+    // viewBox "tall" = marge en haut/côtés pour que les pastilles débordent de la roue à la révélation
+    const svg = el('svg', {viewBox: opts.tall ? '-40 -66 380 236' : '0 0 300 165', class:'cadran'});
     svg.setAttribute('role','img');
     svg.setAttribute('aria-label', `cadran de ${theme.left} à ${theme.right}`);
 
@@ -135,8 +136,8 @@ SJ.cadran = (function(){
         gNeedle.style.display='none'; hidden.style.display='none';
         this.showTarget(true);
         gReveal.innerHTML = '';
-        // étage les pastilles trop proches le long de leur axe (radius décroissant)
-        const THR = 0.045, STEP = 24;
+        // étage les pastilles trop proches vers l'extérieur de la roue
+        const THR = 0.05, STEP = 22;
         const sorted = needles.map((n,idx)=>({n,idx})).sort((a,b)=>a.n.ratio-b.n.ratio);
         const levelByIdx = {}; let lvl=0, prev=-9;
         sorted.forEach(o=>{ lvl = Math.abs(o.n.ratio-prev) < THR ? lvl+1 : 0; levelByIdx[o.idx]=lvl; prev=o.n.ratio; });
@@ -147,10 +148,10 @@ SJ.cadran = (function(){
           if (i >= order.length){ done && done(); return; }
           const idx = order[i++]; const n = needles[idx]; const you = !!n.you;
           const r = clamp(n.ratio,0,1);
-          const [rx,ry] = pt(r, NR);                                   // bout réel sur l'arc
-          const [bx,by] = pt(r, Math.max(34, NR - levelByIdx[idx]*STEP)); // pastille étagée vers le centre
+          const badgeR = 124 + levelByIdx[idx]*STEP;                   // pastilles vers l'EXTÉRIEUR (ne cachent plus les 2/3/4)
+          const [bx,by] = pt(r, badgeR);
           const g = el('g'); g.style.transformOrigin = `${CX}px ${CY}px`; g.style.animation = 'popIn .34s cubic-bezier(.34,1.56,.64,1) both';
-          g.appendChild(el('line', {x1:CX,y1:CY,x2:rx.toFixed(1),y2:ry.toFixed(1), stroke:n.color||'#4D96FF','stroke-width':you?5:3.5,'stroke-linecap':'round', opacity:you?1:0.92}));
+          g.appendChild(el('line', {x1:CX,y1:CY,x2:bx.toFixed(1),y2:by.toFixed(1), stroke:n.color||'#4D96FF','stroke-width':you?5:3.5,'stroke-linecap':'round', opacity:you?1:0.92}));
           const rad = you?15:11;
           if (you){ g.appendChild(el('circle', {cx:bx.toFixed(1),cy:by.toFixed(1),r:rad+5, fill:'none', stroke:n.color||'#FF5D73','stroke-width':3, opacity:0.45})); }
           g.appendChild(el('circle', {cx:bx.toFixed(1),cy:by.toFixed(1),r:rad, fill:n.color||'#4D96FF', stroke:'#3B2D5E','stroke-width':you?3:2}));

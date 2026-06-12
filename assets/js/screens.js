@@ -69,8 +69,8 @@ SJ.screens = (function(){
       </section>`);
     $('#pseudo').addEventListener('input', e=> S.set('pseudo', e.target.value.trim()));
     $('#go-ava').onclick = ()=>{ SJ.audio.click(); avatar(); };
-    $('#create').onclick = ()=>{ if(!ensurePseudo()) return; SJ.audio.pop(); session.code=code5(); lobby(); };
-    $('#join').onclick = ()=>{ if(!ensurePseudo()) return; const c=$('#code-in').value.trim().toUpperCase(); if(c.length<4){ toast('Entre un code à 5 lettres'); return;} SJ.audio.pop(); session.code=c; lobby(); };
+    $('#create').onclick = ()=>{ if(!ensurePseudo()) return; SJ.audio.pop(); SJ.room.createHost(); };
+    $('#join').onclick = ()=>{ const c=$('#code-in').value.trim().toUpperCase(); if(c.length<4){ toast('Entre un code à 5 lettres'); return;} SJ.audio.pop(); joinProfile(c); };
     $('#go-shop').onclick = ()=>{ SJ.audio.click(); shop(); };
     $('#rules').onclick = ()=>{ SJ.audio.click(); rules(); };
   }
@@ -79,7 +79,8 @@ SJ.screens = (function(){
   /* ======================================================
      02 — AVATAR
      ====================================================== */
-  function avatar(){
+  function avatar(opts){
+    opts=opts||{}; const done=()=>(opts.then?opts.then():home());
     mount(`
       <section class="screen">
         <div class="stage" style="max-width:600px">
@@ -120,7 +121,36 @@ SJ.screens = (function(){
     $('#save').onclick=()=>{ if(pad.isBlank() && chosen){ S.set('avatar',{type:'emoji',value:chosen}); }
       else if(!pad.isBlank()){ S.set('avatar',{type:'draw',value:pad.toDataURL()}); }
       else { toast('Dessine ou choisis un modèle 🎨'); return; }
-      SJ.audio.validate(); confetti(30); home(); };
+      SJ.audio.validate(); confetti(30); done(); };
+    $('#back').onclick=()=>{ SJ.audio.click(); done(); };
+  }
+
+  /* ---------- étape profil avant de rejoindre (invité) ---------- */
+  function joinProfile(code){
+    const av=S.get('avatar'), pseudo=S.get('pseudo')||'';
+    mount(`
+      <section class="screen">
+        <div class="blob" style="top:-40px;right:-30px;width:150px;height:150px;background:#FF8FA3;opacity:.4"></div>
+        <div class="stage" style="max-width:440px;align-items:center;text-align:center;gap:18px">
+          <div class="title-xl" style="font-size:40px">Rejoindre 🎈</div>
+          <div class="muted" style="font-weight:700">Partie <b style="color:#FF5D73;letter-spacing:4px">${esc(code)}</b> — crée ton perso pour entrer</div>
+          <div class="ava x58" id="ava-prev">${avaInner(av)}</div>
+          <input id="pseudo" class="field" style="width:240px" maxlength="14" placeholder="Ton pseudo…" value="${esc(pseudo)}">
+          <div class="row gap8" style="justify-content:center">
+            <button class="btn btn--ghost sm" id="draw">✏️ dessiner ma tête</button>
+            <button class="btn btn--ghost sm" id="emoji">🎲 emoji</button>
+          </div>
+          <button class="btn btn--coral lg block" id="go" style="max-width:300px">Rejoindre la partie ▶</button>
+          <div id="status" class="muted" style="font-weight:700;min-height:22px"></div>
+          <button class="btn btn--ghost sm" id="back">← annuler</button>
+        </div>
+      </section>`);
+    $('#pseudo').addEventListener('input', e=> S.set('pseudo', e.target.value.trim()));
+    $('#draw').onclick=()=>{ SJ.audio.click(); avatar({then:()=>joinProfile(code)}); };
+    $('#emoji').onclick=()=>{ const e=SJ.AVATAR.templates[Math.floor(Math.random()*SJ.AVATAR.templates.length)]; S.set('avatar',{type:'emoji',value:e}); $('#ava-prev').innerHTML=esc(e); SJ.audio.pop(); };
+    $('#go').onclick=()=>{ const p=(S.get('pseudo')||'').trim(); if(!p){ toast('Choisis un pseudo 😊'); $('#pseudo').focus(); return; }
+      $('#status').textContent='Connexion à la partie…'; SJ.audio.pop();
+      SJ.room.join(code, (err)=>{ $('#status').textContent = err==='not-found'?'😕 Aucune partie avec ce code':err==='timeout'?'⏳ Hôte introuvable — réessaie':'Connexion échouée'; SJ.audio.lose(); }); };
     $('#back').onclick=()=>{ SJ.audio.click(); home(); };
   }
 
@@ -411,5 +441,7 @@ SJ.screens = (function(){
 
   function refreshCoins(){ const c=document.getElementById('coins'); if(c) c.textContent=S.get('coins'); }
 
-  return { home, avatar, lobby, shop, rules, podium, start:home };
+  // helpers partagés avec multi.js
+  SJ.ui = { mount, esc, $, after, clearTimers, confetti, toast, avaInner, youEmoji, code5, topbar, startTimer };
+  return { home, avatar, joinProfile, shop, rules, start:home };
 })();
