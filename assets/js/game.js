@@ -36,7 +36,7 @@ SJ.game = (function(){
     M.round++;
     M.proposerIdx = (M.round - 1) % M.players.length;
     M.theme = pickTheme();
-    M.target = clamp(0.12 + Math.random()*0.76, 0, 1); // cible aléatoire (après le thème)
+    M.target = Math.random(); // cible aléatoire (après le thème) — peut coller le bord
     M.clue = '';
     M.guesses = {}; M.ptsRound = {};
     if (proposer().isBot) M.clue = SJ.botClue(M.theme, M.target);

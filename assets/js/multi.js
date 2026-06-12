@@ -92,7 +92,7 @@ SJ.room = (function(){
   function nextRound(){
     if(!M || M.round>=M.rounds){ goPodium(); return; }
     M.round++; M.proposerIdx=(M.round-1)%players.length;
-    M.theme=pickTheme(); M.target=clamp(0.12+Math.random()*0.76,0,1);
+    M.theme=pickTheme(); M.target=Math.random();   // toute la plage : peut coller le bord gauche/droit
     M.clue=''; M.guesses={}; M.validated={}; M.ptsRound={};
     phase='propose'; iValidated=false;
     const prop=proposer();
