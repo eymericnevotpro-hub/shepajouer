@@ -279,10 +279,11 @@ SJ.screens = (function(){
     mount(`
       <section class="screen">
         <div class="stage game card sh-purple" style="gap:14px;overflow:hidden;position:relative">
-          <div class="topbar"><span class="pill lilac tb-label" style="font-size:16px">Tour ${M.round}/${M.rounds} — résultats !</span><span class="pill mint tb-timer" id="nextpill" style="font-size:16px">suivant dans 5…</span></div>
+          <div class="topbar"><span class="pill lilac tb-label" style="font-size:16px">Tour ${M.round}/${M.rounds} — résultats !</span><span class="pill mint tb-timer" id="nextpill" style="font-size:16px">suivant dans 8…</span></div>
           <div class="clue-bubble" style="font-size:19px">${esc(prop.name)} : ${esc(M.clue)}</div>
           <div class="cadran-wrap" id="cad"></div>
           <div class="row wrap" id="chips" style="justify-content:center;gap:10px"></div>
+          <button class="btn btn--purple sm" id="next" style="align-self:center">Tour suivant ▶</button>
         </div>
       </section>`);
     const cad=SJ.cadran.make({theme:th}); cad.setTarget(M.target);
@@ -301,8 +302,9 @@ SJ.screens = (function(){
         wrap.appendChild(d); SJ.audio.coin();
       }));
     }
-    // compte à rebours → suivant
-    let n=5; const np=$('#nextpill');
+    // bouton manuel + compte à rebours → suivant
+    $('#next').onclick=()=>{ SJ.audio.click(); clearTimers(); nextRoundOrEnd(); };
+    let n=8; const np=$('#nextpill');
     ticker=setInterval(()=>{ n--; if(np) np.textContent=`suivant dans ${n}…`; if(n<=0){ clearInterval(ticker); ticker=null; nextRoundOrEnd(); } },1000);
   }
 

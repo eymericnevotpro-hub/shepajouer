@@ -66,7 +66,7 @@ SJ.game = (function(){
   }
 
   function revealNeedles(){
-    return guessers().map(p => ({ ratio: M.guesses[p.id]==null ? 0.5 : M.guesses[p.id], color:p.color, emoji:p.emoji || (p.avatar&&p.avatar.type==='emoji'?p.avatar.value:'•'), name:p.name, pts:M.ptsRound[p.id] }));
+    return guessers().map(p => ({ ratio: M.guesses[p.id]==null ? 0.5 : M.guesses[p.id], color:p.color, emoji:p.emoji || (p.avatar&&p.avatar.type==='emoji'?p.avatar.value:'•'), name:p.isYou?'Toi':p.name, pts:M.ptsRound[p.id], you:!!p.isYou }));
   }
 
   function ranking(){ return M.players.slice().sort((a,b)=> b.score - a.score); }

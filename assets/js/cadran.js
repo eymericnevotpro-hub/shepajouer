@@ -130,20 +130,33 @@ SJ.cadran = (function(){
       enableDrag(cb){ dragCb = cb||null; gNeedle.style.display=''; placeNeedle(needle);
         svg.style.cursor='grab'; svg.addEventListener('pointerdown', onDown); },
       score(p){ return SJ.scoreFor(p===undefined?needle:p, target); },
-      // révélation : aiguilles successives + zone
+      // révélation : aiguilles successives + zone, avec dé-superposition + highlight "toi"
       reveal(needles, done){
         gNeedle.style.display='none'; hidden.style.display='none';
         this.showTarget(true);
         gReveal.innerHTML = '';
+        // étage les pastilles trop proches le long de leur axe (radius décroissant)
+        const THR = 0.045, STEP = 24;
+        const sorted = needles.map((n,idx)=>({n,idx})).sort((a,b)=>a.n.ratio-b.n.ratio);
+        const levelByIdx = {}; let lvl=0, prev=-9;
+        sorted.forEach(o=>{ lvl = Math.abs(o.n.ratio-prev) < THR ? lvl+1 : 0; levelByIdx[o.idx]=lvl; prev=o.n.ratio; });
+        // ordre d'apparition : les autres d'abord, "toi" en dernier (au-dessus)
+        const order = needles.map((_,k)=>k).sort((a,b)=> (needles[a].you?1:0)-(needles[b].you?1:0));
         let i = 0;
         (function next(){
-          if (i >= needles.length){ done && done(); return; }
-          const n = needles[i++]; const [x,y] = pt(clamp(n.ratio,0,1), NR);
+          if (i >= order.length){ done && done(); return; }
+          const idx = order[i++]; const n = needles[idx]; const you = !!n.you;
+          const r = clamp(n.ratio,0,1);
+          const [rx,ry] = pt(r, NR);                                   // bout réel sur l'arc
+          const [bx,by] = pt(r, Math.max(34, NR - levelByIdx[idx]*STEP)); // pastille étagée vers le centre
           const g = el('g'); g.style.transformOrigin = `${CX}px ${CY}px`; g.style.animation = 'popIn .34s cubic-bezier(.34,1.56,.64,1) both';
-          g.appendChild(el('line', {x1:CX,y1:CY,x2:x.toFixed(1),y2:y.toFixed(1), stroke:n.color||'#4D96FF','stroke-width':4,'stroke-linecap':'round'}));
-          g.appendChild(el('circle', {cx:x.toFixed(1),cy:y.toFixed(1),r:10, fill:n.color||'#4D96FF', stroke:'#3B2D5E','stroke-width':2}));
-          const tx = el('text', {x:x.toFixed(1), y:(y+4).toFixed(1), 'font-size':11,'text-anchor':'middle','font-family':'Baloo 2'});
+          g.appendChild(el('line', {x1:CX,y1:CY,x2:rx.toFixed(1),y2:ry.toFixed(1), stroke:n.color||'#4D96FF','stroke-width':you?5:3.5,'stroke-linecap':'round', opacity:you?1:0.92}));
+          const rad = you?15:11;
+          if (you){ g.appendChild(el('circle', {cx:bx.toFixed(1),cy:by.toFixed(1),r:rad+5, fill:'none', stroke:n.color||'#FF5D73','stroke-width':3, opacity:0.45})); }
+          g.appendChild(el('circle', {cx:bx.toFixed(1),cy:by.toFixed(1),r:rad, fill:n.color||'#4D96FF', stroke:'#3B2D5E','stroke-width':you?3:2}));
+          const tx = el('text', {x:bx.toFixed(1), y:(by+4).toFixed(1), 'font-size':you?14:11,'text-anchor':'middle','font-family':'Baloo 2'});
           tx.textContent = n.emoji||''; g.appendChild(tx);
+          if (you){ const lab = el('text', {x:bx.toFixed(1), y:(by-rad-6).toFixed(1), 'font-size':12,'font-weight':'bold','text-anchor':'middle', fill:'#3B2D5E','font-family':'Baloo 2'}); lab.textContent='toi'; g.appendChild(lab); }
           gReveal.appendChild(g);
           SJ.audio.score(n.pts==null?2:n.pts);
           setTimeout(next, 520);
