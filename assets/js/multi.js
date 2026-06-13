@@ -68,7 +68,7 @@ SJ.room = (function(){
     } else if(m.t==='vote'){ const p=players.find(x=>x.id===id); if(p && phase==='lobby'){ p.vote=m.g; salonWinner=null; hostRefresh(); }
     } else if(m.t==='profile'){ const p=players.find(x=>x.id===id); if(p){ p.name=(m.name||p.name).slice(0,14); p.avatar=m.avatar; p.emoji=m.emoji; p.hat=m.hat; p.hatPos=m.hatPos; p.bg=m.bg; hostRefresh(); }
     } else if(m.t==='perm'){ if(M&&M.perms){ M.perms[id]={mic:!!m.mic,cam:!!m.cam}; hostRefresh(); }
-    } else if(m.t==='pbresp'){ if(M&&phase==='pbplay'){ M.responses[id]={choice:m.choice,ok:m.ok,dt:m.dt}; pbMaybeResolve(); }
+    } else if(m.t==='pbresp'){ if(M&&phase==='pbplay'){ M.responses[id]={choice:m.choice,ok:m.ok,tap:m.tap,dt:m.dt}; pbMaybeResolve(); }
     } else if(m.t==='ucclue'){ if(M&&M.gameType==='undercover') ucClueSubmit(id, m.word);
     } else if(m.t==='ucvote'){ if(M&&M.gameType==='undercover') ucVoteSubmit(id, m.target);
     } else if(m.t==='pichoose'){ if(M&&M.gameType==='pictionary') piChoose(id, m.word);
@@ -269,7 +269,7 @@ SJ.room = (function(){
       else if(type==='vote') net.send({t:'vote', g:payload.g});
       else if(type==='dilemma') net.send({t:'dilemma', a:payload.a, b:payload.b, pred:payload.pred});
       else if(type==='pick') net.send({t:'pick', c:payload.c});
-      else if(type==='pbresp') net.send({t:'pbresp', choice:payload.choice, ok:payload.ok, dt:payload.dt});
+      else if(type==='pbresp') net.send({t:'pbresp', choice:payload.choice, ok:payload.ok, tap:payload.tap, dt:payload.dt});
       else if(type==='ucclue') net.send({t:'ucclue', word:payload.word});
       else if(type==='ucvote') net.send({t:'ucvote', target:payload.target});
       else if(type==='pichoose') net.send({t:'pichoose', word:payload.word});
@@ -302,6 +302,7 @@ SJ.room = (function(){
     else if(type==='pinext'){ if(M&&M.gameType==='pictionary'&&phase==='pireveal') piNextRound(); }
     else if(type==='next'){ mClear(); nextRound(); }
     else if(type==='restart'){ hostStart(M?M.gameType:'wavelength'); }
+    else if(type==='tosalon'){ mClear(); M=null; phase='lobby'; curKey=null; salonWinner=null; salonSpinning=false; coinsClaimed=false; players.forEach(p=>{ p.vote=null; }); hostRefresh(); }   // retour au menu des jeux SANS casser le salon
   }
 
   function leave(){ try{ if(net){ if(role==='guest') net.send({t:'leave'}); net.leave(); } }catch(e){} net=null; role='solo'; M=null; phase='lobby'; }
@@ -661,13 +662,14 @@ SJ.room = (function(){
         ${rk[3]?`<div class="muted" style="font-weight:700">${rk.slice(3).map(p=>`${esc(p.emoji||'🙂')} ${p.you?'Toi':esc(p.name)} · ${p.score}`).join('  ·  ')} — pas loin !</div>`:''}
         <div class="row wrap" style="justify-content:center;gap:12px">
           <span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${pod.earned||0} 🪙 gagnées !</span>
-          ${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button>':''}
+          ${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button><button class="btn btn--purple" id="menu">🏠 Menu des jeux</button>':''}
           <button class="btn btn--ghost" id="quit">Quitter</button>
         </div>
         ${v.iAmHost?'':'<div class="muted" style="font-size:14px;font-weight:700">en attente que l\'hôte relance…</div>'}
       </div></div></section>`);
     SJ.audio.win(); U().confetti(140);
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('restart'); };
+    const mn=$('#menu'); if(mn) mn.onclick=()=>{ SJ.audio.click(); act('tosalon'); };
     $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
 
@@ -699,12 +701,12 @@ SJ.room = (function(){
     phase='pbplay'; curKey=null; hostRefresh();
     mAfter(Math.round(M.dur*1000)+300, ()=>{ if(phase==='pbplay') pbResolve(); });
   }
-  function pbMaybeResolve(){ if(phase!=='pbplay'||!M) return; const alive=pbAlive(); if(alive.length && alive.every(p=>M.responses[p.id]!=null)) pbResolve(); }
+  function pbMaybeResolve(){ if(phase!=='pbplay'||!M) return; if(M.mini && M.mini.kind==='tapmash') return; /* tapmash : on attend le chrono (on peut dépasser) */ const alive=pbAlive(); if(alive.length && alive.every(p=>M.responses[p.id]!=null)) pbResolve(); }
   function pbResolve(){
     if(phase!=='pbplay') return; mClear();
     const alive=pbAlive(); const res={}; const out=[]; let fastId=null, fastDt=Infinity;
     alive.forEach(p=>{ const r=M.responses[p.id]; const dt=(r&&r.dt!=null)?r.dt:M.dur*1000; let ok=false;
-      if(M.mini.kind==='choice') ok=!!(r && r.choice===M.mini.correct); else ok=!!(r && r.ok);
+      if(M.mini.kind==='choice') ok=!!(r && r.choice===M.mini.correct); else if(M.mini.kind==='tapmash') ok=!!(r && r.tap===M.mini.target); else ok=!!(r && r.ok);
       let gained=0;
       if(ok){ gained=pbSpeedPts(dt,M.dur); M.pts[p.id]=(M.pts[p.id]||0)+gained; if(dt<fastDt){ fastDt=dt; fastId=p.id; } }
       else { M.lives[p.id]=Math.max(0,(M.lives[p.id]||0)-1); if(M.lives[p.id]===0){ M.elim[p.id]=M.round; M.surv[p.id]=M.round; out.push(p.id); } }
@@ -810,7 +812,8 @@ SJ.room = (function(){
         : `<button class="pbopt" data-i="${i}" style="background:#fff;border:3px solid #3B2D5E;border-radius:18px;padding:16px;font-size:${m.big?32:22}px;font-weight:800;box-shadow:0 6px 0 #C9BBE8;cursor:pointer;font-family:inherit;color:#3B2D5E">${esc(o)}</button>`).join('');
       body=`${m.display?`<div class="center" style="font-size:34px;letter-spacing:3px;word-break:break-word">${esc(m.display)}</div>`:''}<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${opts}</div>`;
     } else if(m.kind==='tapmash'){
-      body=`<button id="mash" style="background:#FFC93C;border:3px solid #3B2D5E;border-radius:24px;padding:28px;font-size:28px;font-weight:800;box-shadow:0 8px 0 #D9A416;cursor:pointer;width:100%;font-family:inherit;color:#3B2D5E">TAPE ! <span id="mashn">0/${m.target}</span></button>`;
+      body=`<button id="mash" style="background:#FFC93C;border:3px solid #3B2D5E;border-radius:24px;padding:24px;font-size:26px;font-weight:800;box-shadow:0 8px 0 #D9A416;cursor:pointer;width:100%;font-family:inherit;color:#3B2D5E">TAPE ! <span id="mashn">0</span> <span style="opacity:.55">/ ${m.target}</span></button>
+        <div class="center" id="mashmsg" style="font-weight:800;font-size:14px;color:#7A6BA8;min-height:20px">tape pile <b>${m.target}</b> fois… puis stop ✋ (dépasse = raté)</div>`;
     } else if(m.kind==='crie'){
       const tp=Math.round((m.micTarget||0.72)*100);
       body=`<div class="center" style="font-size:54px" id="crieface">😐</div><div class="center muted" style="font-weight:700">CRIE pour dépasser le repère 🎯</div>
@@ -836,7 +839,11 @@ SJ.room = (function(){
       const t0=nowMs(); let answered=false;
       const done=(extra)=>{ if(answered)return; answered=true; act('pbresp', Object.assign({dt:Math.round(nowMs()-t0)}, extra)); };
       if(m.kind==='choice'){ app().querySelectorAll('.pbopt').forEach(b=> b.onclick=()=>{ if(answered)return; SJ.audio.pop(); app().querySelectorAll('.pbopt').forEach(x=>{ if(x!==b)x.style.opacity='.45'; }); b.style.outline='4px solid #FFC93C'; b.style.outlineOffset='2px'; done({choice:+b.dataset.i}); }); }
-      else if(m.kind==='tapmash'){ let n=0; const btn=$('#mash'), lbl=$('#mashn'); if(btn) btn.onclick=()=>{ if(answered)return; n++; if(lbl)lbl.textContent=n+'/'+m.target; SJ.audio.tick(); if(n>=m.target){ btn.style.background='#2EC4B6'; btn.style.color='#fff'; done({ok:true}); } }; }
+      else if(m.kind==='tapmash'){ let n=0; const btn=$('#mash'), lbl=$('#mashn'), msg=$('#mashmsg');
+        if(btn) btn.onclick=()=>{ if(answered)return; n++; if(lbl)lbl.textContent=n; const dt=Math.round(nowMs()-t0);
+          if(n<m.target){ SJ.audio.tick(); if(msg){ msg.textContent='encore…'; msg.style.color='#7A6BA8'; } act('pbresp',{tap:n,dt}); }
+          else if(n===m.target){ SJ.audio.pop(); btn.style.background='#2EC4B6'; btn.style.color='#fff'; btn.style.boxShadow='0 8px 0 #1E8B81'; if(msg){ msg.textContent='✋ PILE ! ne touche plus !'; msg.style.color='#1E8B81'; } act('pbresp',{tap:n,dt}); }
+          else { answered=true; btn.style.background='#FF5D73'; btn.style.color='#fff'; btn.style.boxShadow='0 8px 0 #C23A50'; if(msg){ msg.textContent='💥 Trop ! raté…'; msg.style.color='#C23A50'; } act('pbresp',{tap:n,dt}); } }; }
       else if(m.kind==='crie'){ pbListenMic(m.micTarget, ()=>{ SJ.audio.pop(); done({ok:true}); }); }
     }
     pbTicks(pb.dur);
@@ -856,12 +863,13 @@ SJ.room = (function(){
       <div class="center pop" style="font-size:26px;font-weight:800">🏆 ${winner?(winner.you?'Tu gagnes !':esc(winner.name)+' gagne !'):'Fin de la Party Box'}</div>
       <div class="col" style="gap:7px">${rows}</div>
       <div class="center"><span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${o.earned||0} 🪙</span></div>
-      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
+      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button><button class="btn btn--purple" id="menu">🏠 Menu des jeux</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
       ${v.iAmHost?'':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
     </div></section>`);
     if(o.iWon){ SJ.audio.win(); U().confetti(60); } else { SJ.audio.lose(); U().confetti(22); }
     if(!coinsClaimed){ SJ.store.addCoins(o.earned||0); coinsClaimed=true; }
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('pbagain'); };
+    const mn=$('#menu'); if(mn) mn.onclick=()=>{ SJ.audio.click(); act('tosalon'); };
     $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
 
@@ -980,12 +988,13 @@ SJ.room = (function(){
       <div class="center" style="font-size:14px;font-weight:700;color:#7A6BA8">Mot civil : <b>${esc(uc.wCivil)}</b> · mot imposteur : <b>${esc(uc.wUnder)}</b></div>
       <div class="col" style="gap:7px">${rows}</div>
       <div class="center"><span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${uc.earned||0} 🪙</span></div>
-      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
+      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button><button class="btn btn--purple" id="menu">🏠 Menu des jeux</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
       ${v.iAmHost?'':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
     </div></section>`);
     if(uc.iWon){ SJ.audio.win(); U().confetti(55); } else { SJ.audio.lose(); U().confetti(18); }
     if(!coinsClaimed){ SJ.store.addCoins(uc.earned||0); coinsClaimed=true; }
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('ucagain'); };
+    const mn=$('#menu'); if(mn) mn.onclick=()=>{ SJ.audio.click(); act('tosalon'); };
     $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
 

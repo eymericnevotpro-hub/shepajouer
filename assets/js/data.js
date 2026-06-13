@@ -153,7 +153,7 @@ SJ.PB = (function(){
     { key:'couleur', fn:()=>{ const t=ri(COLORS.length); const o=shuffle(COLORS.slice()); return choice(`Tape le ${COLORS[t].n}`, o.map(c=>c.c), o.findIndex(c=>c.n===COLORS[t].n), {colormode:true}); } },
     { key:'compter', fn:()=>{ const k=3+ri(5); const e=EMO[ri(EMO.length)]; const set=new Set([k]); while(set.size<4){ set.add(Math.max(1,k+ri(5)-2)); } const o=shuffle([...set]); return choice('Combien ?', o.map(String), o.indexOf(k), {display:e.repeat(k)}); } },
     { key:'suite', fn:()=>{ const s=1+ri(4), st=1+ri(4); const seq=[s,s+st,s+2*st]; const ans=s+3*st; const set=new Set([ans]); while(set.size<4){ set.add(ans+ri(7)-3); } const o=shuffle([...set]); return choice(`${seq.join('  ')}  __`, o.map(String), o.indexOf(ans)); } },
-    { key:'mash', fn:()=>{ const t=6+ri(5); return {kind:'tapmash', prompt:'Tape vite !', target:t, cat:'normal'}; } },
+    { key:'mash', fn:()=>{ const t=5+ri(5); return {kind:'tapmash', prompt:'Tape le nombre PILE !', target:t, cat:'normal'}; } },
   ];
 
   return {
