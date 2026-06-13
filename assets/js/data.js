@@ -143,29 +143,28 @@ SJ.PB = (function(){
 
   function choice(prompt, options, correct, extra){ return Object.assign({kind:'choice', prompt, options, correct, cat:'normal'}, extra||{}); }
 
+  // chaque builder porte une `key` → on évite de rejouer le même type deux fois de suite
   const BUILDERS = [
-    // intrus
-    ()=>{ const base=EMO[ri(EMO.length)]; let odd=base; while(odd===base) odd=EMO[ri(EMO.length)];
+    { key:'intrus', fn:()=>{ const base=EMO[ri(EMO.length)]; let odd=base; while(odd===base) odd=EMO[ri(EMO.length)];
       const opts=[base,base,base,base,base]; const pos=ri(5); opts[pos]=odd;
-      return choice('Trouve l’intrus 👀', opts, pos, {big:true}); },
-    // math +
-    ()=>{ const a=2+ri(9), b=2+ri(9); const c=a+b; const set=new Set([c]); while(set.size<4){ set.add(c + (ri(7)-3) + (ri(2)?1:-1)); } const o=shuffle([...set]); return choice(`${a} + ${b} = ?`, o.map(String), o.indexOf(c)); },
-    // pair / impair
-    ()=>{ const n=2+ri(98); return choice(`${n} c’est…`, ['Pair','Impair'], n%2===0?0:1); },
-    // couleur (Stroop léger)
-    ()=>{ const t=ri(COLORS.length); const o=shuffle(COLORS.slice()); return choice(`Tape le ${COLORS[t].n}`, o.map(c=>c.c), o.findIndex(c=>c.n===COLORS[t].n), {colormode:true}); },
-    // compter
-    ()=>{ const k=3+ri(5); const e=EMO[ri(EMO.length)]; const set=new Set([k]); while(set.size<4){ set.add(Math.max(1,k+ri(5)-2)); } const o=shuffle([...set]); return choice('Combien ?', o.map(String), o.indexOf(k), {display:e.repeat(k)}); },
-    // suite arithmétique
-    ()=>{ const s=1+ri(4), st=1+ri(4); const seq=[s,s+st,s+2*st]; const ans=s+3*st; const set=new Set([ans]); while(set.size<4){ set.add(ans+ri(7)-3); } const o=shuffle([...set]); return choice(`${seq.join('  ')}  __`, o.map(String), o.indexOf(ans)); },
-    // tape vite (mash)
-    ()=>{ const t=6+ri(5); return {kind:'tapmash', prompt:'Tape vite !', target:t, cat:'normal'}; },
+      return choice('Trouve l’intrus 👀', opts, pos, {big:true}); } },
+    { key:'math', fn:()=>{ const a=2+ri(9), b=2+ri(9); const c=a+b; const set=new Set([c]); while(set.size<4){ set.add(c + (ri(7)-3) + (ri(2)?1:-1)); } const o=shuffle([...set]); return choice(`${a} + ${b} = ?`, o.map(String), o.indexOf(c)); } },
+    { key:'parite', fn:()=>{ const n=2+ri(98); return choice(`${n} c’est…`, ['Pair','Impair'], n%2===0?0:1); } },
+    { key:'couleur', fn:()=>{ const t=ri(COLORS.length); const o=shuffle(COLORS.slice()); return choice(`Tape le ${COLORS[t].n}`, o.map(c=>c.c), o.findIndex(c=>c.n===COLORS[t].n), {colormode:true}); } },
+    { key:'compter', fn:()=>{ const k=3+ri(5); const e=EMO[ri(EMO.length)]; const set=new Set([k]); while(set.size<4){ set.add(Math.max(1,k+ri(5)-2)); } const o=shuffle([...set]); return choice('Combien ?', o.map(String), o.indexOf(k), {display:e.repeat(k)}); } },
+    { key:'suite', fn:()=>{ const s=1+ri(4), st=1+ri(4); const seq=[s,s+st,s+2*st]; const ans=s+3*st; const set=new Set([ans]); while(set.size<4){ set.add(ans+ri(7)-3); } const o=shuffle([...set]); return choice(`${seq.join('  ')}  __`, o.map(String), o.indexOf(ans)); } },
+    { key:'mash', fn:()=>{ const t=6+ri(5); return {kind:'tapmash', prompt:'Tape vite !', target:t, cat:'normal'}; } },
   ];
 
   return {
-    make(allowMic){
-      if(allowMic && Math.random()<0.22) return {kind:'crie', prompt:'CRIE !!! 🎤', cat:'mic'};
-      return BUILDERS[ri(BUILDERS.length)]();
+    // avoidKey : clé du mini précédent à ne PAS rejouer ; micTarget = niveau sonore à atteindre
+    make(allowMic, avoidKey){
+      if(allowMic && avoidKey!=='crie' && Math.random()<0.25)
+        return {kind:'crie', prompt:'CRIE le plus fort possible ! 🎤', cat:'mic', key:'crie', micTarget:0.72};
+      let pool = BUILDERS.filter(b=> b.key!==avoidKey);
+      if(!pool.length) pool = BUILDERS;
+      const b = pool[ri(pool.length)];
+      const m = b.fn(); m.key = b.key; return m;
     }
   };
 })();
