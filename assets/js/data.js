@@ -116,3 +116,14 @@ SJ.BOTS = [
 ];
 
 SJ.PLAYER_COLORS = ['#FF5D73','#4D96FF','#2EC4B6','#FFC93C','#9B5DE5','#FF8FA3'];
+
+/* ---------- catalogue de jeux (Salon / menu principal) ---------- */
+/* playable:true = jouable maintenant ; les autres = « bientôt » */
+SJ.GAMES = [
+  { id:'wavelength', name:"Longueur d'onde", icon:'🎯', tagline:'Vise la zone cachée du cadran. Le jeu signature.', time:'15 min', bg:'#9B5DE5', shadow:'#6E3CB0', text:'#FFFFFF', tint:'#EADBFF', rot:'-3deg', playable:true },
+  { id:'draw',  name:'Dessine & devine',  icon:'✏️', tagline:'Un joueur dessine, les autres devinent.',          time:'10 min', bg:'#2EC4B6', shadow:'#1E8B81', text:'#FFFFFF', tint:'#D7F4F0', rot:'4deg' },
+  { id:'bluff', name:'Bluffe-moi',         icon:'🎭', tagline:'Démasque le menteur caché dans le groupe.',         time:'15 min', bg:'#FF8FA3', shadow:'#D45D75', text:'#3B2D5E', tint:'#FFE1E7', rot:'3deg' },
+  { id:'quiz',  name:'Quiz éclair',        icon:'⚡', tagline:'Le plus rapide à buzzer rafle la mise.',            time:'8 min',  bg:'#FFC93C', shadow:'#D9A416', text:'#3B2D5E', tint:'#FFF1C9', rot:'-3deg' },
+  { id:'chain', name:'Mots en chaîne',     icon:'🔗', tagline:'Rebondis de mot en mot sans casser la chaîne.',     time:'6 min',  bg:'#4D96FF', shadow:'#2F6BC4', text:'#FFFFFF', tint:'#DDEBFF', rot:'4deg' },
+  { id:'polls', name:'Top des sondages',   icon:'📊', tagline:"Devine l'avis de la foule.",                        time:'12 min', bg:'#FF5D73', shadow:'#C23A50', text:'#FFFFFF', tint:'#FFE1E6', rot:'-2deg' },
+];

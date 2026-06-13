@@ -30,6 +30,7 @@ SJ.room = (function(){
   let M=null;                     // {rounds,round,proposerIdx,theme,target,clue,guesses,validated,ptsRound,coins,pool,used}
   let phase='lobby';
   let curKey=null, curCad=null, iValidated=false, coinsClaimed=false;
+  let salonSpinning=false, salonWinner=null;
 
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function randn(){ let u=0,v=0; while(!u)u=Math.random(); while(!v)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
@@ -40,8 +41,8 @@ SJ.room = (function(){
   function createHost(){
     role='host'; myId='host'; coinsClaimed=false;
     settings = { durationId:SJ.store.get('settings').durationId, packs:SJ.store.get('settings').packs.slice() };
-    const p=profile(); players=[{ id:'host', name:p.name, avatar:p.avatar, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, bg:p.bg, color:colorAt(0), isHost:true, score:0 }];
-    phase='lobby'; M=null; curKey=null;
+    const p=profile(); players=[{ id:'host', name:p.name, avatar:p.avatar, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, bg:p.bg, color:colorAt(0), isHost:true, score:0, vote:null }];
+    phase='lobby'; M=null; curKey=null; salonSpinning=false; salonWinner=null;
     code = U().code5();
     net = SJ.net.create({ onConn:hostOnConn, onMsg:hostOnMsg, onLeave:hostOnLeave });
     net.host(code, ()=>{}, (err)=>{ if(err==='id-taken'){ code=U().code5(); net.leave(); net=SJ.net.create({onConn:hostOnConn,onMsg:hostOnMsg,onLeave:hostOnLeave}); net.host(code,()=>{}); } });
@@ -51,7 +52,7 @@ SJ.room = (function(){
   function hostOnMsg(id, m){
     if(m.t==='join'){
       if(!players.find(p=>p.id===id)){
-        players.push({ id, name:(m.name||'Pote').slice(0,14), avatar:m.avatar, emoji:m.emoji||'🙂', hat:m.hat, hatPos:m.hatPos, bg:m.bg, color:colorAt(players.length), isHost:false, score:0 });
+        players.push({ id, name:(m.name||'Pote').slice(0,14), avatar:m.avatar, emoji:m.emoji||'🙂', hat:m.hat, hatPos:m.hatPos, bg:m.bg, color:colorAt(players.length), isHost:false, score:0, vote:null });
         SJ.audio.pop(); U().toast(`${m.name||'Un·e pote'} a rejoint !`);
         hostRefresh();
       }
@@ -59,6 +60,7 @@ SJ.room = (function(){
       if(phase==='guess' && M && M.guesses[id]==null && id!==proposer().id){ M.guesses[id]=clamp(m.ratio,0,1); M.validated[id]=true; hostRefresh(); checkDone(); }
     } else if(m.t==='clue'){
       if(phase==='propose' && M && proposer().id===id){ M.clue=(m.text||'…').slice(0,40); startGuess(); }
+    } else if(m.t==='vote'){ const p=players.find(x=>x.id===id); if(p && phase==='lobby'){ p.vote=m.g; salonWinner=null; hostRefresh(); }
     } else if(m.t==='leave'){ hostOnLeave(id); }
   }
   function hostOnLeave(id){
@@ -119,8 +121,20 @@ SJ.room = (function(){
   // diffuse un view par destinataire (cible cachée sauf au proposeur / à la révélation)
   function buildView(forId){
     const v={ phase, code, meId:forId, iAmHost:(forId==='host'), rounds:M?M.rounds:0, round:M?M.round:0,
-      players:players.map(p=>({id:p.id,name:p.name,avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg,color:p.color,isHost:p.isHost,score:p.score})),
+      players:players.map(p=>({id:p.id,name:p.name,avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg,color:p.color,isHost:p.isHost,score:p.score,vote:p.vote})),
       settings, hostName:(players[0]&&players[0].name)||'?' };
+    if(phase==='lobby'){
+      const counts=SJ.GAMES.map((_,i)=>players.filter(p=>p.vote===i).length);
+      let lead=0; counts.forEach((c,i)=>{ if(c>counts[lead]) lead=i; });
+      const any=counts[lead]>0;
+      v.salon={
+        spinning:salonSpinning, winner:salonWinner,
+        games:SJ.GAMES.map((g,i)=>({ id:g.id,name:g.name,icon:g.icon,tagline:g.tagline,time:g.time,bg:g.bg,shadow:g.shadow,text:g.text,rot:g.rot,tint:g.tint,playable:!!g.playable,
+          count:counts[i], voters:players.filter(p=>p.vote===i).map(p=>({emoji:p.emoji,color:p.color})),
+          isWinner:salonWinner===i, isLeader:!salonSpinning&&salonWinner==null&&any&&i===lead })),
+        status: salonStatusObj(counts, lead, any)
+      };
+    }
     if(M){
       const prop=proposer();
       v.proposerId=prop.id; v.proposerName=prop.name; v.theme=M.theme; v.clue=M.clue;
@@ -155,6 +169,7 @@ SJ.room = (function(){
   function guestOnMsg(_id,m){
     if(m.t==='kicked'){ U().toast('Tu as été retiré de la partie'); quitToHome(); return; }
     if(m.t==='clk'){ showClock(m.s, !!m.rev); return; }
+    if(m.t==='flash'){ flashCard(m.hi); return; }
   }
   function guestOnClose(){ U().toast('Connexion à l\'hôte perdue'); quitToHome(); }
 
@@ -163,10 +178,14 @@ SJ.room = (function(){
     if(role==='guest'){
       if(type==='clue') net.send({t:'clue', text:payload.text});
       else if(type==='guess') net.send({t:'guess', ratio:payload.ratio});
+      else if(type==='vote') net.send({t:'vote', g:payload.g});
       return;
     }
     // host / solo
-    if(type==='start') hostStart();
+    if(type==='vote'){ const p=players.find(x=>x.id===myId); if(p){ p.vote=payload.g; salonWinner=null; hostRefresh(); } }
+    else if(type==='spin') startSpin();
+    else if(type==='launch') doLaunch();
+    else if(type==='start') hostStart();
     else if(type==='clue'){ if(M){ M.clue=(payload.text||'…').slice(0,40); startGuess(); } }
     else if(type==='guess'){ if(M){ M.guesses[myId]=clamp(payload.ratio,0,1); M.validated[myId]=true; hostRefresh(); checkDone(); } }
     else if(type==='next'){ mClear(); nextRound(); }
@@ -189,60 +208,132 @@ SJ.room = (function(){
     else if(v.phase==='podium') rPodium(v);
   }
 
-  // ---------- LOBBY ----------
+  // ---------- SALON (menu principal : invite + vote du jeu) ----------
   function rLobby(v){
-    const host = v.iAmHost;
+    const host=v.iAmHost, s=v.salon;
+    const cards = s.games.map((g,i)=>{
+      const winRing = g.isWinner?`<div style="position:absolute;inset:-3px;border:4px solid #FFC93C;border-radius:22px;box-shadow:0 0 0 5px rgba(255,201,60,.45);pointer-events:none"></div><div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:32px" class="pop">👑</div>`:'';
+      const leadBadge = g.isLeader?`<span style="background:#FFC93C;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">👑 en tête</span>`:'';
+      const soon = g.playable?'':`<span style="position:absolute;top:-9px;right:-6px;background:#3B2D5E;color:#fff;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:800;transform:rotate(6deg);z-index:1">🚧 bientôt</span>`;
+      const voters = g.voters.length
+        ? `<div style="display:flex">${g.voters.map(vt=>`<span style="width:26px;height:26px;border-radius:50%;border:2px solid #3B2D5E;background:${vt.color};margin-left:-6px;display:flex;align-items:center;justify-content:center;font-size:13px">${esc(vt.emoji)}</span>`).join('')}</div>`
+        : `<span style="font-size:12px;font-weight:700;opacity:.8">sois le 1er 🙌</span>`;
+      return `<div data-gc="${i}" class="gcard" style="position:relative;background:${g.bg};color:${g.text};border:3px solid #3B2D5E;border-radius:22px;padding:16px;box-shadow:0 8px 0 ${g.shadow};cursor:pointer;display:flex;flex-direction:column;gap:9px;min-height:188px;${g.playable?'':'opacity:.93'}">
+        ${winRing}${soon}
+        <div class="row between" style="align-items:flex-start">
+          <div style="width:50px;height:50px;background:rgba(255,255,255,.88);border:3px solid #3B2D5E;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 4px 0 rgba(59,45,94,.35);transform:rotate(${g.rot})">${g.icon}</div>
+          <div class="col" style="align-items:flex-end;gap:5px">
+            <span style="background:rgba(255,255,255,.88);color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">⏱ ${g.time}</span>
+            ${leadBadge}
+          </div>
+        </div>
+        <div style="font-size:20px;font-weight:800;line-height:1.05">${esc(g.name)}</div>
+        <div style="font-size:13px;font-weight:600;opacity:.92;flex:1;line-height:1.25">${esc(g.tagline)}</div>
+        <div class="row between" style="min-height:28px">
+          <div style="padding-left:6px">${voters}</div>
+          <span style="background:#fff;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:2px 11px;font-size:14px;font-weight:800;box-shadow:0 3px 0 rgba(59,45,94,.4)">🗳 ${g.count}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    const playerList = v.players.map(p=>{
+      const g = (p.vote!=null) ? s.games[p.vote] : null;
+      const tag = g ? `<span style="font-size:12px;font-weight:700;color:#3B2D5E;background:${g.tint||'#fff'};border:2px solid #3B2D5E;border-radius:999px;padding:2px 9px;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.name)}</span>`
+                  : `<span style="font-size:12px;font-weight:700;color:#A99CC9;font-style:italic">réfléchit…</span>`;
+      return `<div class="row" style="gap:10px">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},36)}
+        <div class="grow row gap6" style="min-width:0"><span style="font-size:17px;font-weight:700">${esc(p.name)}</span>${p.you?'<span class="pill paper" style="font-size:11px;padding:0 8px">toi</span>':''}${p.isHost?'<span>👑</span>':''}</div>
+        ${tag}</div>`;
+    }).join('');
+
     mMount(`
-      <section class="screen">
-        <div class="stage wide">
-          <div class="card sh-teal" style="gap:18px;display:flex;flex-direction:column">
-            <div class="row between wrap" style="gap:10px">
-              <div style="font-size:22px;font-weight:800">La partie de <span style="color:#FF5D73">${esc(v.hostName)}</span> 🎈</div>
-              <div class="row gap8">
-                <div class="pill paper" style="font-size:26px;font-weight:800;letter-spacing:6px;border-style:dashed">${esc(v.code||'')}</div>
-                <button class="btn btn--ghost sm" id="copy">copier le lien ⎘</button>
-              </div>
+      <section class="screen" style="justify-content:flex-start;overflow:visible">
+        <div class="stage wide" style="max-width:1080px;gap:18px">
+          <header class="row between wrap" style="gap:14px">
+            <div class="row gap8"><div style="width:46px;height:46px;background:#FF5D73;border:3px solid #3B2D5E;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 5px 0 #C23A50;transform:rotate(-4deg)">🎲</div>
+              <div class="col" style="line-height:1.05"><div style="font-size:24px;font-weight:800">Shepa Jouer</div><div style="font-size:14px;font-weight:700;color:#9B5DE5">Salon de ${esc(v.hostName)}</div></div></div>
+            <div class="row gap8">
+              <span class="pill paper" style="font-size:16px;font-weight:800">🪙 ${SJ.store.get('coins')}</span>
+              ${host?`<button class="pill lilac" id="cfg" style="cursor:pointer;font-size:15px">⚙️ réglages</button>`:''}
+              <button class="btn btn--ghost sm" id="back">← quitter</button>
             </div>
-            <div class="row wrap" style="gap:18px;align-items:stretch">
-              <div class="panel paper" style="flex:1.3;min-width:240px">
-                <div class="row between"><span class="panel-label">Joueurs — <span id="pcount">${v.players.length}</span></span></div>
-                <div id="players" class="col" style="gap:10px">${playersRows(v)}</div>
+          </header>
+          <div class="row wrap" style="gap:20px;align-items:flex-start">
+            <div class="col grow" style="flex:2.2;min-width:300px;gap:14px">
+              <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap"><h2 style="font-size:clamp(24px,4vw,34px);font-weight:800;text-shadow:0 4px 0 #FFD9B8">Votez pour un jeu&nbsp;!</h2><span class="caveat" style="font-size:20px">tape une carte 👆</span></div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(214px,1fr));gap:16px">${cards}</div>
+            </div>
+            <div class="col" style="flex:1;min-width:280px;gap:16px">
+              <div class="card sh-blue" style="gap:12px">
+                <div style="font-size:18px;font-weight:800">📨 Invite tes amis</div>
+                <div style="border:3px dashed #3B2D5E;border-radius:14px;padding:8px 0;text-align:center;font-size:28px;font-weight:800;letter-spacing:6px;background:#F4EFFF">${esc(v.code||'')}</div>
+                <button class="btn btn--blue block" id="copy">⎘ Copier le lien</button>
               </div>
-              <div class="col" style="flex:1;gap:14px;min-width:240px">
-                ${host?`
-                <div class="panel lilac"><div class="panel-label">Durée de la partie</div><div class="spread" id="durs"></div></div>
-                <div class="panel mint"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div>
-                <div class="grow"></div>
-                <button class="btn btn--coral lg block" id="start" ${v.players.length<2?'disabled':''}>Lancer la partie ▶</button>
-                ${v.players.length<2?'<div class="center muted" style="font-size:14px;font-weight:700">Partage le code — il faut au moins 2 joueurs</div>':''}
-                `:`
-                <div class="panel lilac center" style="justify-content:center;min-height:160px"><div style="font-size:19px;font-weight:700">⏳ En attente que l'hôte<br>lance la partie…</div></div>
-                `}
+              <div class="card sh-teal" style="gap:10px">
+                <div class="row between"><div style="font-size:18px;font-weight:800">👥 Joueurs</div><span class="pill mint" style="font-size:14px">${v.players.length}/10</span></div>
+                ${playerList}
+              </div>
+              <div class="card" style="gap:12px;background:#9B5DE5;color:#fff;box-shadow:0 9px 0 #4A2E9E">
+                <div class="center" style="min-height:44px;display:flex;flex-direction:column;justify-content:center">
+                  <div style="font-size:20px;font-weight:800;line-height:1.1">${esc(s.status.title)}</div>
+                  <div style="font-size:14px;font-weight:600;color:#EADBFF">${esc(s.status.sub)}</div>
+                </div>
+                ${host?`<button class="btn btn--yellow block" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Le hasard décide'}</button>
+                <button class="btn btn--teal block" id="launch" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer la partie ▶"}</button>
+                ${v.players.length<2?'<div class="center" style="font-size:12px;font-weight:700;color:#EADBFF">Partage le code — il faut au moins 2 joueurs</div>':'<div class="center" style="font-size:12px;font-weight:600;color:#EADBFF">L\'hôte lance quand tout le monde est prêt</div>'}`
+                :`<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ L'hôte choisit et lance la partie…</div>`}
               </div>
             </div>
           </div>
-          <div class="hint">↳ partage le lien : tes potes apparaissent ici en direct dès qu'ils rejoignent 🎈</div>
-          <button class="btn btn--ghost sm" id="back" style="align-self:flex-start">← quitter</button>
         </div>
       </section>`);
+    app().querySelectorAll('.gcard').forEach(c=> c.onclick=()=>{ if(s.spinning) return; SJ.audio.pop(); act('vote',{g:+c.dataset.gc}); });
     $('#copy').onclick=()=>{ const link=location.origin+location.pathname+'?code='+(v.code||''); if(navigator.clipboard) navigator.clipboard.writeText(link); U().toast('Lien copié ! 🔗'); SJ.audio.click(); };
     $('#back').onclick=()=>{ SJ.audio.click(); quitToHome(); };
-    if(host){
-      $('#start').onclick=()=>{ act('start'); };
-      renderDurs(); renderPacks();
-    }
+    if(host){ const cf=$('#cfg'); if(cf) cf.onclick=()=>{ SJ.audio.click(); salonSettings(); };
+      const rb=$('#rand'); if(rb) rb.onclick=()=>act('spin');
+      const lb=$('#launch'); if(lb) lb.onclick=()=>act('launch'); }
   }
-  function playersRows(v){
-    return v.players.map(p=>`<div class="row">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},40)}
-      <div class="grow" style="font-size:20px;font-weight:700">${esc(p.name)}${p.isHost?' 👑':''}</div>
-      <div style="color:#2EC4B6;font-weight:700;font-size:15px">${p.isHost?'hôte':'prêt !'}</div></div>`).join('');
+  function patchLobby(v){ rLobby(v); }   // le salon se re-rend entièrement (aucun input en cours)
+  function flashCard(hi){ app().querySelectorAll('.gcard').forEach(c=>{ c.style.outline=(+c.dataset.gc===hi)?'4px solid #FFC93C':'none'; c.style.outlineOffset='3px'; }); }
+  function salonStatusObj(counts, lead, any){
+    if(salonSpinning) return {title:'Le sort en décide…', sub:'ça tourne, ça tourne…'};
+    if(salonWinner!=null){ const g=SJ.GAMES[salonWinner]; return {title:`${g.icon} ${g.name} !`, sub:'Tout le monde embarque 🎉'}; }
+    if(any){ const g=SJ.GAMES[lead]; return {title:g.name, sub:`${counts[lead]} voix en tête`}; }
+    return {title:'En attente des votes', sub:'Tape un jeu pour voter'};
   }
-  function patchLobby(v){ const pe=$('#players'); if(pe) pe.innerHTML=playersRows(v); const pc=$('#pcount'); if(pc) pc.textContent=v.players.length;
-    const st=$('#start'); if(st){ st.disabled=v.players.length<2; } }
-  function renderDurs(){ const e=$('#durs'); if(!e)return; e.innerHTML=SJ.DURATIONS.map(d=>`<div class="dur" data-id="${d.id}" style="flex:1;text-align:center;font-weight:${d.id===settings.durationId?800:700};border:3px solid #3B2D5E;border-radius:12px;padding:8px 0;cursor:pointer;background:${d.id===settings.durationId?'#9B5DE5':'#fff'};color:${d.id===settings.durationId?'#fff':'#3B2D5E'};box-shadow:${d.id===settings.durationId?'0 4px 0 #6E3CB0':'none'}">${d.label}<br><span style="font-size:13px;opacity:.85">${d.rounds} tours</span></div>`).join('');
-    app().querySelectorAll('.dur').forEach(x=>x.onclick=()=>{ settings.durationId=x.dataset.id; SJ.store.setIn('settings','durationId',x.dataset.id); SJ.audio.click(); renderDurs(); }); }
-  function renderPacks(){ const e=$('#packs'); if(!e)return; e.innerHTML=SJ.PACKS.map(p=>`<div class="chip pk ${settings.packs.includes(p.id)?'active':''}" data-id="${p.id}">${esc(p.label)}</div>`).join('');
-    app().querySelectorAll('.pk').forEach(x=>x.onclick=()=>{ let ps=settings.packs.slice(); const id=x.dataset.id; if(ps.includes(id))ps=ps.filter(z=>z!==id); else ps.push(id); if(!ps.length)ps=[id]; settings.packs=ps; SJ.store.setIn('settings','packs',ps); SJ.audio.click(); renderPacks(); }); }
+  function salonSettings(){
+    const o=document.createElement('div');
+    o.style.cssText='position:fixed;inset:0;background:rgba(59,45,94,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px;animation:popIn .25s both';
+    o.innerHTML=`<div class="card sh-purple" style="max-width:420px;background:#fff;display:flex;flex-direction:column;gap:14px">
+      <h2 style="font-size:22px">⚙️ Réglages — Longueur d'onde</h2>
+      <div class="panel lilac"><div class="panel-label">Durée de la partie</div><div class="spread" id="durs"></div></div>
+      <div class="panel mint"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div>
+      <button class="btn btn--purple block" id="ok">OK</button></div>`;
+    document.body.appendChild(o);
+    renderDurs(); renderPacks();
+    o.querySelector('#ok').onclick=()=>{ SJ.audio.pop(); o.remove(); };
+    o.onclick=e=>{ if(e.target===o) o.remove(); };
+  }
+  function startSpin(){
+    if(salonSpinning) return; salonSpinning=true; salonWinner=null; hostRefresh();
+    let ticks=0; const total=22+Math.floor(Math.random()*7);
+    mTick && clearInterval(mTick);
+    mTick=setInterval(()=>{ ticks++; const hi=Math.floor(Math.random()*SJ.GAMES.length); flashCard(hi); if(net) net.broadcast({t:'flash',hi}); SJ.audio.tick();
+      if(ticks>=total){ clearInterval(mTick); mTick=null; const pl=SJ.GAMES.map((g,i)=>i).filter(i=>SJ.GAMES[i].playable); salonWinner=pl[Math.floor(Math.random()*pl.length)]; salonSpinning=false; SJ.audio.win(); U().confetti(40); hostRefresh(); } },85);
+  }
+  function doLaunch(){
+    if(salonSpinning) return;
+    if(players.length<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
+    let target=salonWinner;
+    if(target==null){ const counts=SJ.GAMES.map((_,i)=>players.filter(p=>p.vote===i).length); let lead=0; counts.forEach((c,i)=>{ if(c>counts[lead]) lead=i; }); target = counts[lead]>0?lead:0; }
+    const g=SJ.GAMES[target];
+    if(!g.playable){ U().toast(`🚧 ${g.name} arrive bientôt ! Pour l'instant, vote Longueur d'onde 🎯`); return; }
+    hostStart(); // seul wavelength est jouable pour l'instant
+  }
+  function renderDurs(){ const e=document.getElementById('durs'); if(!e)return; e.innerHTML=SJ.DURATIONS.map(d=>`<div class="dur" data-id="${d.id}" style="flex:1;text-align:center;font-weight:${d.id===settings.durationId?800:700};border:3px solid #3B2D5E;border-radius:12px;padding:8px 0;cursor:pointer;background:${d.id===settings.durationId?'#9B5DE5':'#fff'};color:${d.id===settings.durationId?'#fff':'#3B2D5E'};box-shadow:${d.id===settings.durationId?'0 4px 0 #6E3CB0':'none'}">${d.label}<br><span style="font-size:13px;opacity:.85">${d.rounds} tours</span></div>`).join('');
+    document.querySelectorAll('.dur').forEach(x=>x.onclick=()=>{ settings.durationId=x.dataset.id; SJ.store.setIn('settings','durationId',x.dataset.id); SJ.audio.click(); renderDurs(); }); }
+  function renderPacks(){ const e=document.getElementById('packs'); if(!e)return; e.innerHTML=SJ.PACKS.map(p=>`<div class="chip pk ${settings.packs.includes(p.id)?'active':''}" data-id="${p.id}">${esc(p.label)}</div>`).join('');
+    document.querySelectorAll('.pk').forEach(x=>x.onclick=()=>{ let ps=settings.packs.slice(); const id=x.dataset.id; if(ps.includes(id))ps=ps.filter(z=>z!==id); else ps.push(id); if(!ps.length)ps=[id]; settings.packs=ps; SJ.store.setIn('settings','packs',ps); SJ.audio.click(); renderPacks(); }); }
 
   // ---------- PROPOSE ----------
   function rPropose(v){
