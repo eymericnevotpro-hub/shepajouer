@@ -125,5 +125,19 @@ SJ.GAMES = [
   { id:'bluff', name:'Bluffe-moi',         icon:'🎭', tagline:'Démasque le menteur caché dans le groupe.',         time:'15 min', bg:'#FF8FA3', shadow:'#D45D75', text:'#3B2D5E', tint:'#FFE1E7', rot:'3deg' },
   { id:'quiz',  name:'Quiz éclair',        icon:'⚡', tagline:'Le plus rapide à buzzer rafle la mise.',            time:'8 min',  bg:'#FFC93C', shadow:'#D9A416', text:'#3B2D5E', tint:'#FFF1C9', rot:'-3deg' },
   { id:'chain', name:'Mots en chaîne',     icon:'🔗', tagline:'Rebondis de mot en mot sans casser la chaîne.',     time:'6 min',  bg:'#4D96FF', shadow:'#2F6BC4', text:'#FFFFFF', tint:'#DDEBFF', rot:'4deg' },
-  { id:'polls', name:'Top des sondages',   icon:'📊', tagline:"Devine l'avis de la foule.",                        time:'12 min', bg:'#FF5D73', shadow:'#C23A50', text:'#FFFFFF', tint:'#FFE1E6', rot:'-2deg' },
+  { id:'tupreferes', name:'Tu préfères… ?', icon:'🤔', tagline:"Parie le % qui choisira l'option A.",             time:'8 min',  bg:'#FF5D73', shadow:'#C23A50', text:'#FFFFFF', tint:'#FFE1E6', rot:'-2deg', playable:true },
+];
+
+/* dilemmes proposés au hasard pour "Tu préfères" (l'auteur peut aussi écrire le sien) */
+SJ.DILEMMAS = [
+  {a:'🍍 Pizza ananas', b:'🚫 Pizza sans ananas'},
+  {a:'🦸 Voler', b:'🫥 Être invisible'},
+  {a:'🏖️ Vacances plage', b:'🏔️ Vacances montagne'},
+  {a:'🐶 Team chien', b:'🐱 Team chat'},
+  {a:'☀️ Lève-tôt', b:'🌙 Couche-tard'},
+  {a:'📱 Sans réseau 1 mois', b:'🚿 Sans douche 1 semaine'},
+  {a:'🍫 Que du sucré', b:'🧀 Que du salé'},
+  {a:'🔮 Voir le futur', b:'⏪ Changer le passé'},
+  {a:'💰 Riche mais seul', b:'🥰 Fauché mais entouré'},
+  {a:'🎬 Films', b:'🎮 Jeux vidéo'},
 ];

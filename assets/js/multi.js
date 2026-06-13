@@ -60,6 +60,8 @@ SJ.room = (function(){
       if(phase==='guess' && M && M.guesses[id]==null && id!==proposer().id){ M.guesses[id]=clamp(m.ratio,0,1); M.validated[id]=true; hostRefresh(); checkDone(); }
     } else if(m.t==='clue'){
       if(phase==='propose' && M && proposer().id===id){ M.clue=(m.text||'…').slice(0,40); startGuess(); }
+    } else if(m.t==='dilemma'){ if(M && phase==='propose' && proposer().id===id){ M.dilemma={a:(m.a||'Option A').slice(0,42), b:(m.b||'Option B').slice(0,42)}; M.pred=clamp(Math.round(m.pred),0,100); startGuess(); }
+    } else if(m.t==='pick'){ if(M && phase==='guess' && M.votes[id]==null && id!==proposer().id){ M.votes[id]=m.c; hostRefresh(); checkDone(); }
     } else if(m.t==='vote'){ const p=players.find(x=>x.id===id); if(p && phase==='lobby'){ p.vote=m.g; salonWinner=null; hostRefresh(); }
     } else if(m.t==='leave'){ hostOnLeave(id); }
   }
@@ -75,13 +77,14 @@ SJ.room = (function(){
     hostRefresh();
   }
 
-  function hostStart(){
+  function hostStart(gameId){
     const real=players.length;
     if(real<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
     const dur=SJ.DURATIONS.find(d=>d.id===settings.durationId)||SJ.DURATIONS[1];
     const pool=[]; (settings.packs.length?settings.packs:['classique']).forEach(id=>(SJ.THEMES[id]||[]).forEach(t=>pool.push(t)));
     players.forEach(p=>p.score=0);
-    M={ rounds:dur.rounds, round:0, proposerIdx:-1, theme:null, target:.5, clue:'', guesses:{}, validated:{}, ptsRound:{}, coins:{}, pool, used:[] };
+    M={ gameType:gameId||'wavelength', rounds:dur.rounds, round:0, proposerIdx:-1, theme:null, target:.5, clue:'', guesses:{}, validated:{}, ptsRound:{}, coins:{}, pool, used:[],
+        dilemma:null, pred:null, realA:null, votes:{} };
     players.forEach(p=>M.coins[p.id]=0);
     coinsClaimed=false; SJ.audio.pop(); U().confetti(20);
     nextRound();
@@ -93,8 +96,9 @@ SJ.room = (function(){
   function nextRound(){
     if(!M || M.round>=M.rounds){ goPodium(); return; }
     M.round++; M.proposerIdx=(M.round-1)%players.length;
-    M.theme=pickTheme(); M.target=Math.random();   // toute la plage : peut coller le bord gauche/droit
-    M.clue=''; M.guesses={}; M.validated={}; M.ptsRound={};
+    M.clue=''; M.guesses={}; M.validated={}; M.ptsRound={}; M.votes={}; M.pred=null; M.realA=null;
+    if(M.gameType==='tupreferes'){ M.dilemma=SJ.DILEMMAS[Math.floor(Math.random()*SJ.DILEMMAS.length)]; }
+    else { M.theme=pickTheme(); M.target=Math.random(); }   // toute la plage : peut coller le bord
     phase='propose'; iValidated=false;
     hostRefresh();
   }
@@ -105,16 +109,30 @@ SJ.room = (function(){
     mTick && clearInterval(mTick);
     let t=45; mTick=setInterval(()=>{ t--; showClock(t,false); if(net) net.broadcast({t:'clk',s:Math.max(0,t)}); if(t<=0){ clearInterval(mTick); mTick=null; finalize(); } },1000);
   }
-  function checkDone(){ if(phase!=='guess') return; const g=guessers(); if(g.every(p=>M.guesses[p.id]!=null)) finalize(); }
+  function checkDone(){ if(phase!=='guess') return; const g=guessers();
+    const done = M.gameType==='tupreferes' ? g.every(p=>M.votes[p.id]!=null) : g.every(p=>M.guesses[p.id]!=null);
+    if(done) finalize(); }
   function finalize(){
     if(phase==='reveal') return;
     mClear();
-    let best=0;
-    guessers().forEach(p=>{ const g=M.guesses[p.id]; const pts=(g==null)?0:SJ.scoreFor(g,M.target); M.ptsRound[p.id]=pts; p.score+=pts; best=Math.max(best,pts); });
-    const prop=proposer(); M.ptsRound[prop.id]=best; prop.score+=best;
-    players.forEach(p=>{ const c=(M.ptsRound[p.id]||0)*3 + ((M.ptsRound[p.id]>=4)?5:0); M.coins[p.id]=(M.coins[p.id]||0)+c; });
+    if(M.gameType==='tupreferes'){ finalizeTP(); }
+    else {
+      let best=0;
+      guessers().forEach(p=>{ const g=M.guesses[p.id]; const pts=(g==null)?0:SJ.scoreFor(g,M.target); M.ptsRound[p.id]=pts; p.score+=pts; best=Math.max(best,pts); });
+      const prop=proposer(); M.ptsRound[prop.id]=best; prop.score+=best;
+      players.forEach(p=>{ const c=(M.ptsRound[p.id]||0)*3 + ((M.ptsRound[p.id]>=4)?5:0); M.coins[p.id]=(M.coins[p.id]||0)+c; });
+    }
     phase='reveal'; hostRefresh();
     let n=8; mTick=setInterval(()=>{ n--; showClock(n,true); if(net) net.broadcast({t:'clk',s:Math.max(0,n),rev:true}); if(n<=0){ clearInterval(mTick); mTick=null; nextRound(); } },1000);
+  }
+  function finalizeTP(){
+    const gs=guessers(); const a=gs.filter(p=>M.votes[p.id]==='A').length; const tot=gs.filter(p=>M.votes[p.id]!=null).length;
+    M.realA = tot ? Math.round(100*a/tot) : 50;
+    const prop=proposer(); const ecart=Math.abs(M.realA - (M.pred==null?50:M.pred));
+    const pts=Math.max(0, Math.round(100 - ecart*4));
+    M.ptsRound[prop.id]=pts; prop.score+=pts;
+    gs.forEach(p=>{ const ok=M.votes[p.id]!=null; M.ptsRound[p.id]=ok?15:0; if(ok) p.score+=15; });   // votants : +15 participation
+    players.forEach(p=>{ M.coins[p.id]=(M.coins[p.id]||0)+Math.round((M.ptsRound[p.id]||0)/8); });
   }
   function goPodium(){ phase='podium'; hostRefresh(); }
 
@@ -136,19 +154,32 @@ SJ.room = (function(){
       };
     }
     if(M){
-      const prop=proposer();
-      v.proposerId=prop.id; v.proposerName=prop.name; v.theme=M.theme; v.clue=M.clue;
-      v.myTarget=((phase==='propose'||phase==='guess')&&prop.id===forId)?M.target:null;
-      const gs=guessers();
-      v.guessProgress={ validated:gs.filter(p=>M.guesses[p.id]!=null).length, total:gs.length };
-      if(phase==='reveal'){
-        v.reveal={ target:M.target,
-          needles:gs.map(p=>({id:p.id, ratio:M.guesses[p.id]==null?0.5:M.guesses[p.id], color:p.color, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, pts:M.ptsRound[p.id], you:(p.id===forId)})),
-          chips:players.slice().sort((a,b)=>(M.ptsRound[b.id]||0)-(M.ptsRound[a.id]||0)).map(p=>({name:p.name,emoji:p.emoji,pts:M.ptsRound[p.id]||0,you:(p.id===forId),prop:(p.id===prop.id)})) };
-      }
+      const prop=proposer(); const gs=guessers();
+      v.gameType=M.gameType; v.proposerId=prop.id; v.proposerName=prop.name;
       if(phase==='podium'){
         v.podium={ ranking:players.slice().sort((a,b)=>b.score-a.score).map(p=>({name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,score:p.score,you:(p.id===forId)})),
           earned:(M.coins[forId]||0) };
+      } else if(M.gameType==='tupreferes'){
+        v.dilemma=M.dilemma;
+        v.myPred=((phase==='propose'||phase==='guess')&&prop.id===forId)?M.pred:null;
+        v.myPick=M.votes[forId]||null;
+        v.guessProgress={ validated:gs.filter(p=>M.votes[p.id]!=null).length, total:gs.length };
+        if(phase==='reveal'){
+          const ec=Math.abs((M.realA==null?50:M.realA)-(M.pred==null?50:M.pred));
+          const verdict = ec===0?'🎯 Dans le mille !':ec<=5?'🔥 Tout proche !':ec<=15?'🙂 Pas mal':ec<=30?'😬 Loin…':'🥶 Complètement à côté';
+          v.reveal={ tp:true, realA:M.realA, pred:M.pred, verdict, points:M.ptsRound[prop.id]||0, authorName:prop.name, dilemma:M.dilemma,
+            teamA:gs.filter(p=>M.votes[p.id]==='A').map(p=>({emoji:p.emoji,color:p.color})),
+            teamB:gs.filter(p=>M.votes[p.id]==='B').map(p=>({emoji:p.emoji,color:p.color})) };
+        }
+      } else {
+        v.theme=M.theme; v.clue=M.clue;
+        v.myTarget=((phase==='propose'||phase==='guess')&&prop.id===forId)?M.target:null;
+        v.guessProgress={ validated:gs.filter(p=>M.guesses[p.id]!=null).length, total:gs.length };
+        if(phase==='reveal'){
+          v.reveal={ target:M.target,
+            needles:gs.map(p=>({id:p.id, ratio:M.guesses[p.id]==null?0.5:M.guesses[p.id], color:p.color, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, pts:M.ptsRound[p.id], you:(p.id===forId)})),
+            chips:players.slice().sort((a,b)=>(M.ptsRound[b.id]||0)-(M.ptsRound[a.id]||0)).map(p=>({name:p.name,emoji:p.emoji,pts:M.ptsRound[p.id]||0,you:(p.id===forId),prop:(p.id===prop.id)})) };
+        }
       }
     }
     return v;
@@ -179,17 +210,21 @@ SJ.room = (function(){
       if(type==='clue') net.send({t:'clue', text:payload.text});
       else if(type==='guess') net.send({t:'guess', ratio:payload.ratio});
       else if(type==='vote') net.send({t:'vote', g:payload.g});
+      else if(type==='dilemma') net.send({t:'dilemma', a:payload.a, b:payload.b, pred:payload.pred});
+      else if(type==='pick') net.send({t:'pick', c:payload.c});
       return;
     }
     // host / solo
     if(type==='vote'){ const p=players.find(x=>x.id===myId); if(p){ p.vote=payload.g; salonWinner=null; hostRefresh(); } }
     else if(type==='spin') startSpin();
     else if(type==='launch') doLaunch();
-    else if(type==='start') hostStart();
+    else if(type==='start') hostStart('wavelength');
     else if(type==='clue'){ if(M){ M.clue=(payload.text||'…').slice(0,40); startGuess(); } }
     else if(type==='guess'){ if(M){ M.guesses[myId]=clamp(payload.ratio,0,1); M.validated[myId]=true; hostRefresh(); checkDone(); } }
+    else if(type==='dilemma'){ if(M){ M.dilemma={a:(payload.a||'Option A').slice(0,42), b:(payload.b||'Option B').slice(0,42)}; M.pred=clamp(Math.round(payload.pred),0,100); startGuess(); } }
+    else if(type==='pick'){ if(M && phase==='guess'){ M.votes[myId]=payload.c; hostRefresh(); checkDone(); } }
     else if(type==='next'){ mClear(); nextRound(); }
-    else if(type==='restart'){ hostStart(); }
+    else if(type==='restart'){ hostStart(M?M.gameType:'wavelength'); }
   }
 
   function leave(){ try{ if(net){ if(role==='guest') net.send({t:'leave'}); net.leave(); } }catch(e){} net=null; role='solo'; M=null; phase='lobby'; }
@@ -327,8 +362,8 @@ SJ.room = (function(){
     let target=salonWinner;
     if(target==null){ const counts=SJ.GAMES.map((_,i)=>players.filter(p=>p.vote===i).length); let lead=0; counts.forEach((c,i)=>{ if(c>counts[lead]) lead=i; }); target = counts[lead]>0?lead:0; }
     const g=SJ.GAMES[target];
-    if(!g.playable){ U().toast(`🚧 ${g.name} arrive bientôt ! Pour l'instant, vote Longueur d'onde 🎯`); return; }
-    hostStart(); // seul wavelength est jouable pour l'instant
+    if(!g.playable){ U().toast(`🚧 ${g.name} arrive bientôt ! Choisis un jeu jouable 🎯`); return; }
+    hostStart(g.id);
   }
   function renderDurs(){ const e=document.getElementById('durs'); if(!e)return; e.innerHTML=SJ.DURATIONS.map(d=>`<div class="dur" data-id="${d.id}" style="flex:1;text-align:center;font-weight:${d.id===settings.durationId?800:700};border:3px solid #3B2D5E;border-radius:12px;padding:8px 0;cursor:pointer;background:${d.id===settings.durationId?'#9B5DE5':'#fff'};color:${d.id===settings.durationId?'#fff':'#3B2D5E'};box-shadow:${d.id===settings.durationId?'0 4px 0 #6E3CB0':'none'}">${d.label}<br><span style="font-size:13px;opacity:.85">${d.rounds} tours</span></div>`).join('');
     document.querySelectorAll('.dur').forEach(x=>x.onclick=()=>{ settings.durationId=x.dataset.id; SJ.store.setIn('settings','durationId',x.dataset.id); SJ.audio.click(); renderDurs(); }); }
@@ -337,6 +372,7 @@ SJ.room = (function(){
 
   // ---------- PROPOSE ----------
   function rPropose(v){
+    if(v.gameType==='tupreferes') return rProposeTP(v);
     const th=v.theme, mine=v.proposerId===v.meId;
     if(mine){
       mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px">
@@ -364,6 +400,7 @@ SJ.room = (function(){
 
   // ---------- GUESS ----------
   function rGuess(v){
+    if(v.gameType==='tupreferes') return rGuessTP(v);
     const th=v.theme, mine=v.proposerId===v.meId;
     if(mine){
       mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px">
@@ -406,6 +443,7 @@ SJ.room = (function(){
 
   // ---------- REVEAL ----------
   function rReveal(v){
+    if(v.gameType==='tupreferes') return rRevealTP(v);
     const r=v.reveal; if(!r){ return; }
     mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px;position:relative">
       <div class="topbar"><span class="pill lilac tb-label" style="font-size:16px">Tour ${v.round}/${v.rounds} — résultats !</span><span class="pill mint tb-timer" id="nextpill" style="font-size:16px">suivant…</span></div>
@@ -419,6 +457,90 @@ SJ.room = (function(){
     SJ.audio.reveal();
     cad.reveal(r.needles, showChips);
     function showChips(){ const w=$('#chips'); if(!w)return; r.chips.forEach((c,i)=> mAfter(i*170,()=>{ const bg=c.pts>=4?'#E4F8F6':c.pts>=2?'#FFF1C9':'#FFF'; const tail=c.pts>=4?' 🎯':c.pts===0?' 💨':''; const d=document.createElement('div'); d.className='score-chip'; d.style.background=bg; if(c.pts===0)d.style.color='#A99CC9'; d.innerHTML=`${esc(c.emoji||'🙂')} ${c.you?'Toi':esc(c.name)} <b>+${c.pts}</b>${tail}${c.prop?' 🎤':''}`; w.appendChild(d); SJ.audio.coin(); })); }
+    if(v.iAmHost){ const nb=$('#next'); if(nb) nb.onclick=()=>{ SJ.audio.click(); act('next'); }; }
+  }
+
+  // ---------- TU PRÉFÈRES (propose / guess / reveal) ----------
+  function rProposeTP(v){
+    const d=v.dilemma||{a:'',b:''}, mine=v.proposerId===v.meId;
+    if(mine){
+      mMount(`<section class="screen"><div class="stage game card" style="max-width:480px;gap:13px;background:#FFF8EC;box-shadow:0 10px 0 #FFC93C">
+        ${U().topbar(`Manche ${v.round}/${v.rounds} — à toi le dilemme 🖊️`, 'frozen')}
+        ${scoreStrip(v)}
+        <div style="font-size:20px;font-weight:800">Écris ton « Tu préfères ? »</div>
+        <div class="row gap8" style="background:#E4F8F6;border:3px solid #3B2D5E;border-radius:14px;padding:8px 10px"><div style="width:34px;height:34px;background:#2EC4B6;border:3px solid #3B2D5E;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;flex:none">A</div><input id="optA" class="field" style="border:none;background:transparent;padding:0;box-shadow:none" maxlength="42" value="${esc(d.a)}" placeholder="Option A…"></div>
+        <div class="center" style="font-weight:800;color:#9B5DE5">— ou —</div>
+        <div class="row gap8" style="background:#FFE1E7;border:3px solid #3B2D5E;border-radius:14px;padding:8px 10px"><div style="width:34px;height:34px;background:#FF8FA3;border:3px solid #3B2D5E;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none">B</div><input id="optB" class="field" style="border:none;background:transparent;padding:0;box-shadow:none" maxlength="42" value="${esc(d.b)}" placeholder="Option B…"></div>
+        <div class="panel" style="background:#fff;border:3px solid #3B2D5E;gap:10px;align-items:center">
+          <div style="font-size:16px;font-weight:800;text-align:center">Quel % choisira <span style="color:#2EC4B6">A</span> ? 🤫</div>
+          <div id="predLbl" style="width:80px;height:80px;border:4px solid #3B2D5E;border-radius:50%;background:#FFF1C9;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;box-shadow:0 5px 0 #E8C766">50%</div>
+          <input id="pred" type="range" min="0" max="100" value="50" style="width:100%">
+          <div class="muted" style="font-size:13px;font-weight:700;text-align:center">🤫 ta prédiction reste cachée jusqu'à la révélation</div>
+        </div>
+        <button class="btn btn--teal block" id="send">Envoyer aux autres ▶</button>
+      </div></section>`);
+      const pr=$('#pred'), lbl=$('#predLbl'); pr.oninput=()=>{ lbl.textContent=pr.value+'%'; };
+      $('#send').onclick=()=>{ const a=$('#optA').value.trim()||d.a||'Option A', b=$('#optB').value.trim()||d.b||'Option B'; SJ.audio.validate(); act('dilemma',{a,b,pred:+pr.value}); };
+    } else {
+      mMount(`<section class="screen"><div class="stage game card sh-pink" style="max-width:460px;gap:14px">
+        ${U().topbar(`Manche ${v.round}/${v.rounds}`, 'frozen')}
+        ${scoreStrip(v)}
+        <div class="clue-bubble" style="background:#F4EFFF;box-shadow:0 5px 0 #C9BBE8">🖊️ ${esc(v.proposerName)} écrit un dilemme…</div>
+        <div class="center muted" style="font-weight:700;padding:16px">prépare-toi à voter 🤔</div>
+      </div></section>`);
+    }
+  }
+  function rGuessTP(v){
+    const d=v.dilemma||{a:'',b:''}, mine=v.proposerId===v.meId;
+    if(mine){
+      mMount(`<section class="screen"><div class="stage game card sh-pink" style="max-width:460px;gap:14px">
+        ${U().topbar(`Manche ${v.round}/${v.rounds} — les autres votent…`)}
+        ${scoreStrip(v)}
+        <div class="row gap8"><div class="grow center" style="background:#E4F8F6;border:3px solid #3B2D5E;border-radius:14px;padding:12px;font-weight:800">A · ${esc(d.a)}</div><div class="grow center" style="background:#FFE1E7;border:3px solid #3B2D5E;border-radius:14px;padding:12px;font-weight:800">B · ${esc(d.b)}</div></div>
+        <div class="center muted" style="font-weight:700"><span id="prog">${v.guessProgress.validated}/${v.guessProgress.total}</span> ont voté</div>
+      </div></section>`);
+      return;
+    }
+    const picked=v.myPick;
+    mMount(`<section class="screen"><div class="stage game card sh-pink" style="max-width:420px;gap:12px">
+      ${U().topbar(`Manche ${v.round}/${v.rounds} — dilemme de <b style="color:#FF5D73">${esc(v.proposerName)}</b>`)}
+      ${scoreStrip(v)}
+      <div class="center" style="font-size:24px;font-weight:800">Tu préfères… ?</div>
+      <button class="tpopt" data-c="A" style="position:relative;border:3px solid #3B2D5E;border-radius:18px;background:#2EC4B6;color:#fff;padding:22px 14px;font-size:20px;font-weight:800;box-shadow:0 7px 0 #1E8B81;cursor:pointer;${picked==='A'?'outline:4px solid #FFC93C;outline-offset:3px':''}">${esc(d.a)}${picked==='A'?' ✅':''}</button>
+      <div class="center" style="font-weight:800;color:#9B5DE5">VS</div>
+      <button class="tpopt" data-c="B" style="position:relative;border:3px solid #3B2D5E;border-radius:18px;background:#FF8FA3;color:#3B2D5E;padding:22px 14px;font-size:20px;font-weight:800;box-shadow:0 7px 0 #D45D75;cursor:pointer;${picked==='B'?'outline:4px solid #FFC93C;outline-offset:3px':''}">${esc(d.b)}${picked==='B'?' ✅':''}</button>
+      <div class="center muted" style="font-weight:700"><span id="prog">${v.guessProgress.validated}/${v.guessProgress.total}</span> ont voté</div>
+    </div></section>`);
+    if(picked) iValidated=true;
+    app().querySelectorAll('.tpopt').forEach(b=> b.onclick=()=>{ if(iValidated) return; iValidated=true; SJ.audio.validate();
+      app().querySelectorAll('.tpopt').forEach(x=>{ if(x!==b) x.style.opacity='.5'; }); b.style.outline='4px solid #FFC93C'; b.style.outlineOffset='3px';
+      act('pick',{c:b.dataset.c}); });
+  }
+  function rRevealTP(v){
+    const r=v.reveal||{}, d=r.dilemma||{a:'',b:''}, realA=r.realA==null?50:r.realA, pred=r.pred==null?50:r.pred;
+    mMount(`<section class="screen"><div class="stage game card sh-purple" style="max-width:480px;gap:15px">
+      <div class="topbar"><span class="pill lilac tb-label" style="font-size:16px">Manche ${v.round}/${v.rounds} — verdict !</span><span class="pill mint tb-timer" id="nextpill" style="font-size:16px">suivant…</span></div>
+      ${scoreStrip(v)}
+      <div class="center" style="font-size:17px;font-weight:800">${esc(d.a)} <span style="color:#9B5DE5">vs</span> ${esc(d.b)}</div>
+      <div class="col" style="gap:7px">
+        <div class="row between" style="font-size:15px;font-weight:800"><span style="color:#1E8B81">A · ${realA}%</span><span style="color:#D45D75">${100-realA}% · B</span></div>
+        <div style="position:relative;height:50px;border:3px solid #3B2D5E;border-radius:14px;overflow:hidden;background:#FFE1E7;margin-top:14px">
+          <div style="position:absolute;inset:0 auto 0 0;width:${realA}%;background:#2EC4B6;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;color:#fff;font-weight:800">${realA>14?realA+'%':''}</div>
+          <div style="position:absolute;top:-3px;bottom:-3px;left:${pred}%;border-left:4px dashed #3B2D5E"></div>
+          <div style="position:absolute;top:-16px;left:${pred}%;transform:translateX(-50%);background:#FFC93C;border:3px solid #3B2D5E;border-radius:999px;padding:0 8px;font-size:12px;font-weight:800;white-space:nowrap;box-shadow:0 3px 0 #D9A416">${esc(r.authorName||'')} ${pred}%</div>
+        </div>
+      </div>
+      <div class="row gap8">
+        <div class="panel" style="flex:1;background:#E4F8F6;border:3px solid #3B2D5E;gap:6px"><span style="font-size:13px;font-weight:800;color:#1E8B81">Team A</span><div class="row wrap" style="gap:5px">${(r.teamA||[]).map(x=>`<span style="width:28px;height:28px;border-radius:50%;border:2px solid #3B2D5E;background:${x.color};display:flex;align-items:center;justify-content:center;font-size:14px">${esc(x.emoji)}</span>`).join('')||'<span class="muted" style="font-size:12px">—</span>'}</div></div>
+        <div class="panel" style="flex:1;background:#FFE1E7;border:3px solid #3B2D5E;gap:6px"><span style="font-size:13px;font-weight:800;color:#D45D75">Team B</span><div class="row wrap" style="gap:5px">${(r.teamB||[]).map(x=>`<span style="width:28px;height:28px;border-radius:50%;border:2px solid #3B2D5E;background:${x.color};display:flex;align-items:center;justify-content:center;font-size:14px">${esc(x.emoji)}</span>`).join('')||'<span class="muted" style="font-size:12px">—</span>'}</div></div>
+      </div>
+      <div class="card" style="background:#9B5DE5;color:#fff;box-shadow:0 6px 0 #4A2E9E;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px">
+        <div class="col"><span style="font-size:13px;color:#EADBFF">${esc(r.authorName||'')} : prédit ${pred}% · réel ${realA}%</span><span style="font-size:21px;font-weight:800">${esc(r.verdict||'')}</span></div>
+        <div style="background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:12px;padding:6px 14px;font-size:22px;font-weight:800">+${r.points||0}</div>
+      </div>
+      ${v.iAmHost?'<button class="btn btn--purple sm" id="next" style="align-self:center">Manche suivante ▶</button>':''}
+    </div></section>`);
+    SJ.audio.reveal();
     if(v.iAmHost){ const nb=$('#next'); if(nb) nb.onclick=()=>{ SJ.audio.click(); act('next'); }; }
   }
 
