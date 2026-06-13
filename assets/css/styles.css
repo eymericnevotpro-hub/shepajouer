@@ -206,20 +206,15 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
   .theme-pole{font-size:18px}
 }
 
-/* ---------- salon : barre statut+joueurs+actions en haut (desktop) / actions fixées en bas (mobile) ---------- */
+/* ---------- salon : colonne droite (joueurs/réglages/actions) ; actions = navbar fixe en bas sur mobile ---------- */
 html{ scrollbar-gutter: stable; }            /* évite le saut quand une scrollbar apparaît/disparaît */
 .cfg-mobile{ display:none; }                 /* ⚙️ visible sur mobile uniquement */
-.salon-top{ background:#9B5DE5; color:#fff; box-shadow:0 8px 0 #4A2E9E; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-.salon-st{ min-width:140px }
-#salon-stt{ font-size:19px; font-weight:800; line-height:1.05 }
-#salon-sts{ font-size:13px; color:#EADBFF; font-weight:600 }
-.salon-avs{ display:flex; flex-wrap:wrap; gap:10px 7px; align-items:center }
-.salon-actions{ display:flex; gap:10px; align-items:center; flex-shrink:0 }
+.salon-actions{ display:flex; flex-direction:column; gap:12px; }
 @media (max-width:560px){
   .cfg-mobile{ display:inline-flex; }
-  .salon-cfg{ display:none !important; }
+  .salon-cfg{ display:none !important; }      /* réglages derrière ⚙️ sur mobile */
   .salon-cfg.show{ display:flex !important; }
-  .salon-actions{ position:fixed; left:8px; right:8px; bottom:8px; z-index:45; background:#6A4BD6; border:3px solid #3B2D5E; border-radius:16px; padding:9px 10px; box-shadow:0 6px 0 #4A2E9E; }
-  .salon-actions .btn{ flex:1; font-size:17px; padding:12px 10px; }
-  .salon-screen{ padding-bottom:110px !important; }   /* place pour la barre fixe */
+  .salon-actions{ position:fixed; left:8px; right:8px; bottom:8px; z-index:45; padding:10px 12px !important; gap:8px; box-shadow:0 6px 0 #4A2E9E; }
+  .salon-actions .sa-hint{ display:none; }    /* barre slim : on cache le sous-texte */
+  .salon-screen{ padding-bottom:150px !important; }   /* place pour la navbar fixe */
 }

@@ -281,13 +281,13 @@ SJ.room = (function(){
       </div>`).join('');
     const avatarP = SJ.ui.myAvatarProfile();
     const actionsInner = host
-      ? `<button class="btn btn--yellow" id="rand" style="white-space:nowrap">${s.spinning?'🌀 Tirage…':'🎲 Hasard'}</button>
-         <button class="btn btn--teal" id="launch" style="white-space:nowrap" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer ▶"}</button>`
-      : `<div class="center" style="font-size:13px;font-weight:700;color:#EADBFF">⏳ l'hôte lance la partie…</div>`;
+      ? `<div class="row gap8" style="width:100%"><button class="btn btn--yellow grow" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Hasard'}</button><button class="btn btn--teal grow" id="launch" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer ▶"}</button></div>
+         <div class="center sa-hint" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — min. 2 joueurs':"L'hôte lance quand vous êtes prêts"}</div>`
+      : `<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ l'hôte lance la partie…</div>`;
     const settingsPanel = host ? `<div class="card salon-cfg" style="display:flex;flex-direction:column;gap:10px;box-shadow:0 9px 0 #C9BBE8">
         <div style="font-size:18px;font-weight:800">⚙️ Réglages <span style="font-size:13px;color:#7A6BA8;font-weight:700">· Longueur d'onde</span></div>
-        <div class="row wrap" style="gap:12px"><div class="panel lilac grow"><div class="panel-label">Durée</div><div class="spread" id="durs"></div></div>
-        <div class="panel mint grow"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div></div>
+        <div class="panel lilac"><div class="panel-label">Durée</div><div class="spread" id="durs"></div></div>
+        <div class="panel mint"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div>
       </div>` : '';
     mMount(`
       <section class="screen salon-screen" style="justify-content:flex-start;overflow:visible">
@@ -303,16 +303,23 @@ SJ.room = (function(){
               <button class="btn btn--ghost sm" id="back">← quitter</button>
             </div>
           </header>
-
-          <div class="card salon-top">
-            <div class="salon-st"><div id="salon-stt">${esc(s.status.title)}</div><div id="salon-sts">${esc(s.status.sub)}</div></div>
-            <div class="salon-avs grow" id="salon-avs">${salonAvs(v)}</div>
-            <div class="salon-actions" id="salon-actions">${actionsInner}</div>
+          <div class="row wrap" style="gap:20px;align-items:flex-start">
+            <div class="col grow" style="flex:2.2;min-width:300px;gap:14px">
+              <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap"><h2 style="font-size:clamp(22px,4vw,32px);font-weight:800;text-shadow:0 4px 0 #FFD9B8">Votez pour un jeu&nbsp;!</h2><span class="caveat" style="font-size:19px">tape une carte 👆</span></div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(214px,1fr));gap:16px">${cards}</div>
+            </div>
+            <div class="col" style="flex:1;min-width:270px;gap:16px">
+              <div class="card sh-teal" style="display:flex;flex-direction:column;gap:10px">
+                <div class="row between"><div style="font-size:18px;font-weight:800">👥 Joueurs</div><span class="pill mint" style="font-size:14px"><span id="salon-pcount">${v.players.length}</span>/10</span></div>
+                <div id="salon-players" class="col" style="gap:9px">${playerListHTML(v)}</div>
+              </div>
+              ${settingsPanel}
+              <div class="card salon-actions" style="background:#9B5DE5;color:#fff;box-shadow:0 9px 0 #4A2E9E">
+                <div class="center" style="min-height:40px;display:flex;flex-direction:column;justify-content:center"><div id="salon-stt" style="font-size:19px;font-weight:800;line-height:1.1">${esc(s.status.title)}</div><div id="salon-sts" style="font-size:13px;font-weight:600;color:#EADBFF">${esc(s.status.sub)}</div></div>
+                ${actionsInner}
+              </div>
+            </div>
           </div>
-
-          <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap"><h2 style="font-size:clamp(22px,4vw,32px);font-weight:800;text-shadow:0 4px 0 #FFD9B8">Votez pour un jeu&nbsp;!</h2><span class="caveat" style="font-size:19px">tape une carte 👆</span></div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(214px,1fr));gap:16px">${cards}</div>
-          ${settingsPanel}
         </div>
       </section>`);
     app().querySelectorAll('.gcard').forEach(c=> c.onclick=()=>{ if(s.spinning) return; SJ.audio.pop(); act('vote',{g:+c.dataset.gc}); });
@@ -324,8 +331,10 @@ SJ.room = (function(){
       const lb=$('#launch'); if(lb) lb.onclick=()=>act('launch');
       renderDurs(); renderPacks(); }
   }
-  function salonAvs(v){ return v.players.map(p=>{ const voted=p.vote!=null;
-      return `<span title="${esc(p.name)}" style="position:relative;display:inline-block;${voted?'':'opacity:.5'}">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},34)}${voted?'<span style="position:absolute;bottom:-2px;right:-3px;background:#2EC4B6;border:2px solid #3B2D5E;border-radius:50%;width:17px;height:17px;font-size:10px;color:#fff;display:flex;align-items:center;justify-content:center">✓</span>':''}${p.isHost?'<span style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:12px">👑</span>':''}</span>`;
+  function playerListHTML(v){ const s=v.salon; return v.players.map(p=>{
+      const g=(p.vote!=null)?s.games[p.vote]:null;
+      const tag=g?`<span style="font-size:12px;font-weight:700;color:#3B2D5E;background:${g.tint||'#fff'};border:2px solid #3B2D5E;border-radius:999px;padding:2px 9px;max-width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.name)}</span>`:`<span style="font-size:12px;font-weight:700;color:#A99CC9;font-style:italic">réfléchit…</span>`;
+      return `<div class="row" style="gap:10px">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},34)}<div class="grow row gap6" style="min-width:0"><span style="font-size:16px;font-weight:700">${esc(p.name)}</span>${p.you?'<span class="pill paper" style="font-size:11px;padding:0 8px">toi</span>':''}${p.isHost?'<span>👑</span>':''}</div>${tag}</div>`;
     }).join(''); }
   function gcVotersHTML(g){ return g.voters.length
     ? `<div style="display:flex">${g.voters.map(vt=>`<span style="width:26px;height:26px;border-radius:50%;border:2px solid #3B2D5E;background:${vt.color};margin-left:-6px;display:flex;align-items:center;justify-content:center;font-size:13px">${esc(vt.emoji)}</span>`).join('')}</div>`
@@ -341,7 +350,8 @@ SJ.room = (function(){
       const ld=card.querySelector('.gc-lead'); if(ld) ld.innerHTML=gcLeadHTML(g);
       const rg=card.querySelector('.gc-ring'); if(rg) rg.innerHTML=gcRingHTML(g);
     });
-    const av=app().querySelector('#salon-avs'); if(av) av.innerHTML=salonAvs(v);
+    const pl=app().querySelector('#salon-players'); if(pl) pl.innerHTML=playerListHTML(v);
+    const pc=app().querySelector('#salon-pcount'); if(pc) pc.textContent=v.players.length;
     const stt=app().querySelector('#salon-stt'); if(stt) stt.textContent=s.status.title;
     const sts=app().querySelector('#salon-sts'); if(sts) sts.textContent=s.status.sub;
     const lb=app().querySelector('#launch'); if(lb){ lb.disabled=v.players.length<2; lb.textContent=(s.winner!=null?"C'est parti ▶":"Lancer ▶"); }
