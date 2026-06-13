@@ -126,6 +126,7 @@ SJ.GAMES = [
   { id:'bluff', name:'Bluffe-moi',         icon:'🎭', tagline:'Tout le monde a un mot… sauf l’imposteur. Démasque-le !', time:'10 min', bg:'#FF8FA3', shadow:'#D45D75', text:'#3B2D5E', tint:'#FFE1E7', rot:'3deg', playable:true },
   { id:'tupreferes', name:'Tu préfères… ?', icon:'🤔', tagline:"Parie le % qui choisira l'option A.",             time:'8 min',  bg:'#FF5D73', shadow:'#C23A50', text:'#FFFFFF', tint:'#FFE1E6', rot:'-2deg', playable:true },
   { id:'partybox',  name:'Party Box',       icon:'📦', tagline:"Plein de mini-jeux qui s'enchaînent de plus en plus vite. 3 vies !", time:'∞', bg:'#6A4BD6', shadow:'#4A2E9E', text:'#FFFFFF', tint:'#EADBFF', rot:'2deg', playable:true },
+  { id:'tictacmot', name:'Tic-Tac-Mot',     icon:'💣', tagline:'Trouve un mot avec le bout affiché… avant que la bombe pète !', time:'10 min', bg:'#3B2D5E', shadow:'#1F1638', text:'#FFFFFF', tint:'#EADBFF', rot:'-2deg', playable:true },
   // « bientôt » en dernier (grisés)
   { id:'quiz',  name:'Quiz éclair',        icon:'⚡', tagline:'Le plus rapide à buzzer rafle la mise.',            time:'8 min',  bg:'#FFC93C', shadow:'#D9A416', text:'#3B2D5E', tint:'#FFF1C9', rot:'-3deg' },
   { id:'chain', name:'Mots en chaîne',     icon:'🔗', tagline:'Rebondis de mot en mot sans casser la chaîne.',     time:'6 min',  bg:'#4D96FF', shadow:'#2F6BC4', text:'#FFFFFF', tint:'#DDEBFF', rot:'4deg' },
@@ -213,4 +214,23 @@ SJ.PICTWORDS = [
   'Papillon','Cactus','Glace','Hamburger','Échelle','Horloge','Tortue','Dragon','Sorcière','Pingouin',
   'Requin','Abeille','Carotte','Fraise','Parachute','Tente','Château','Pont','Ananas','Crabe',
   'Hibou','Licorne','Volcan','Igloo','Boussole','Trésor','Squelette','Cerf-volant','Lampe','Araignée',
+];
+
+/* Tic-Tac-Mot (jeu de la bombe) : un bout de mot à caser dans un mot. Pas de dico — on vérifie juste qu'il contient le bout (≥3 lettres). */
+SJ.BOMBSYL = [
+  {s:'BR', hints:['BRAS','ZÈBRE','OMBRE']},      {s:'TRA', hints:['TRAIN','EXTRA','TRACE']},
+  {s:'OU', hints:['LOUP','ROUGE','FOU']},        {s:'CHA', hints:['CHAT','CACHA','CHANT']},
+  {s:'PLI', hints:['PLIER','REPLI','PLIAGE']},   {s:'MENT', hints:['MENTON','VRAIMENT','MENTHE']},
+  {s:'RON', hints:['RONFLE','RONDE','MARRON']},  {s:'GRA', hints:['GRAND','AGRAFE','GRAVE']},
+  {s:'AN', hints:['ANGE','BANANE','MANGER']},    {s:'IN', hints:['LAPIN','INFO','MOULIN']},
+  {s:'ON', hints:['BALLON','MONDE','PONT']},     {s:'RE', hints:['RENARD','CARRÉ','MÈRE']},
+  {s:'TER', hints:['TERRE','POTERIE','ENTIER']}, {s:'LA', hints:['LAMPE','SALADE','VOILÀ']},
+  {s:'CO', hints:['COQ','ÉCOLE','COLLE']},       {s:'MA', hints:['MAISON','AMANDE','MALIN']},
+  {s:'PA', hints:['PAPA','REPAS','PANIER']},     {s:'TI', hints:['TIGRE','PARTI','SORTIE']},
+  {s:'CHE', hints:['CHEVAL','BICHE','MARCHE']},  {s:'BLE', hints:['BLEU','TABLE','SABLE']},
+  {s:'CLE', hints:['CLÉ','ONCLE','CYCLE']},      {s:'VE', hints:['VENT','RÊVE','VEAU']},
+  {s:'OR', hints:['OR','PORTE','TRÉSOR']},       {s:'AR', hints:['ARBRE','GARE','CANARD']},
+  {s:'IL', hints:['ÎLE','FACILE','PILE']},       {s:'OI', hints:['OISEAU','ROI','BOÎTE']},
+  {s:'EUR', hints:['FLEUR','PEUR','BONHEUR']},   {s:'AGE', hints:['PAGE','NUAGE','IMAGE']},
+  {s:'TION', hints:['NATION','POTION','STATION']},{s:'POI', hints:['POISSON','POIRE','POING']},
 ];
