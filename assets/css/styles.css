@@ -217,7 +217,8 @@ html{ scrollbar-gutter: stable; }            /* évite le saut quand une scrollb
   .cfg-mobile{ display:inline-flex; }
   .salon-cfg{ display:none !important; }      /* réglages derrière ⚙️ sur mobile */
   .salon-cfg.show{ display:flex !important; }
-  .salon-actions{ position:fixed; left:8px; right:8px; bottom:8px; z-index:45; padding:10px 12px !important; gap:8px; box-shadow:0 6px 0 #4A2E9E; }
+  /* bottom = safe-area : sur iPhone à encoche la barre passe AU-DESSUS de la barre d'accueil (viewport-fit=cover) */
+  .salon-actions{ position:fixed; left:max(8px,env(safe-area-inset-left)); right:max(8px,env(safe-area-inset-right)); bottom:max(8px,env(safe-area-inset-bottom)); z-index:45; padding:10px 12px !important; gap:8px; box-shadow:0 6px 0 #4A2E9E; }
   .salon-actions .sa-hint{ display:none; }    /* barre slim : on cache le sous-texte */
-  .salon-screen{ padding-bottom:150px !important; }   /* place pour la navbar fixe */
+  .salon-screen{ padding-bottom:calc(150px + env(safe-area-inset-bottom)) !important; }   /* place pour la navbar fixe */
 }
