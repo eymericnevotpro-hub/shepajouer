@@ -65,7 +65,7 @@ SJ.room = (function(){
       if(phase==='propose' && M && proposer().id===id){ M.clue=(m.text||'…').slice(0,40); startGuess(); }
     } else if(m.t==='dilemma'){ if(M && phase==='propose' && proposer().id===id){ M.dilemma={a:(m.a||'Option A').slice(0,42), b:(m.b||'Option B').slice(0,42)}; M.pred=clamp(Math.round(m.pred),0,100); startGuess(); }
     } else if(m.t==='pick'){ if(M && phase==='guess' && M.votes[id]==null && id!==proposer().id){ M.votes[id]=m.c; hostRefresh(); checkDone(); }
-    } else if(m.t==='vote'){ const p=players.find(x=>x.id===id); if(p && phase==='lobby'){ p.vote=m.g; salonWinner=null; hostRefresh(); }
+    } else if(m.t==='vote'){ const p=players.find(x=>x.id===id); if(p && phase==='lobby' && SJ.GAMES[m.g] && SJ.GAMES[m.g].playable){ p.vote=m.g; salonWinner=null; hostRefresh(); }
     } else if(m.t==='profile'){ const p=players.find(x=>x.id===id); if(p){ p.name=(m.name||p.name).slice(0,14); p.avatar=m.avatar; p.emoji=m.emoji; p.hat=m.hat; p.hatPos=m.hatPos; p.bg=m.bg; hostRefresh(); }
     } else if(m.t==='perm'){ if(M&&M.perms){ M.perms[id]={mic:!!m.mic,cam:!!m.cam}; hostRefresh(); }
     } else if(m.t==='pbresp'){ if(M&&phase==='pbplay'){ M.responses[id]={choice:m.choice,ok:m.ok,tap:m.tap,dt:m.dt}; pbMaybeResolve(); }
@@ -279,7 +279,7 @@ SJ.room = (function(){
       return;
     }
     // host / solo
-    if(type==='vote'){ const p=players.find(x=>x.id===myId); if(p){ p.vote=payload.g; salonWinner=null; hostRefresh(); } }
+    if(type==='vote'){ const p=players.find(x=>x.id===myId); if(p && SJ.GAMES[payload.g] && SJ.GAMES[payload.g].playable){ p.vote=payload.g; salonWinner=null; hostRefresh(); } }
     else if(type==='spin') startSpin();
     else if(type==='launch') doLaunch();
     else if(type==='start') hostStart('wavelength');
@@ -392,7 +392,9 @@ SJ.room = (function(){
           </div>
         </div>
       </section>`);
-    app().querySelectorAll('.gcard').forEach(c=> c.onclick=()=>{ if(s.spinning) return; SJ.audio.pop(); act('vote',{g:+c.dataset.gc}); });
+    app().querySelectorAll('.gcard').forEach(c=> c.onclick=()=>{ if(s.spinning) return; const gi=+c.dataset.gc; const g=s.games[gi];
+      if(!g || !g.playable){ SJ.audio.click(); U().toast('🚧 Ce jeu arrive bientôt !'); return; }   // jeux « bientôt » : non sélectionnables
+      SJ.audio.pop(); act('vote',{g:gi}); });
     $('#copy').onclick=()=>{ const link=location.origin+location.pathname+'?code='+(v.code||''); if(navigator.clipboard) navigator.clipboard.writeText(link); U().toast('Lien copié ! 🔗'); SJ.audio.click(); };
     $('#back').onclick=()=>{ SJ.audio.click(); quitToHome(); };
     const em=$('#editme'); if(em) em.onclick=()=>{ SJ.audio.click(); SJ.screens.avatar({then: reenterSalon}); };
