@@ -189,6 +189,11 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
 .center{text-align:center} .hidden{display:none!important}
 .spread{display:flex; gap:12px} .gap8{gap:8px} .gap6{gap:6px}
 .divider{width:3px; height:28px; background:#EDE6F7; border-radius:2px}
+/* survol des cartes (lift bouncy) */
+.gcard{transition:transform .12s ease}
+.gcard:hover{transform:translateY(-5px)}
+.shop-item:hover{transform:translateY(-3px)}
+.tmpl:hover{transform:translateY(-2px)}
 
 /* ---------- responsive ---------- */
 @media (max-width:560px){
