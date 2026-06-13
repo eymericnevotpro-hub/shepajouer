@@ -280,55 +280,39 @@ SJ.room = (function(){
         <div class="row between" style="min-height:28px"><div class="gc-voters" style="padding-left:6px">${gcVotersHTML(g)}</div><span class="gc-count" style="background:#fff;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:2px 11px;font-size:14px;font-weight:800;box-shadow:0 3px 0 rgba(59,45,94,.4)">🗳 ${g.count}</span></div>
       </div>`).join('');
     const avatarP = SJ.ui.myAvatarProfile();
+    const actionsInner = host
+      ? `<button class="btn btn--yellow" id="rand" style="white-space:nowrap">${s.spinning?'🌀 Tirage…':'🎲 Hasard'}</button>
+         <button class="btn btn--teal" id="launch" style="white-space:nowrap" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer ▶"}</button>`
+      : `<div class="center" style="font-size:13px;font-weight:700;color:#EADBFF">⏳ l'hôte lance la partie…</div>`;
     const settingsPanel = host ? `<div class="card salon-cfg" style="display:flex;flex-direction:column;gap:10px;box-shadow:0 9px 0 #C9BBE8">
         <div style="font-size:18px;font-weight:800">⚙️ Réglages <span style="font-size:13px;color:#7A6BA8;font-weight:700">· Longueur d'onde</span></div>
-        <div class="panel lilac"><div class="panel-label">Durée</div><div class="spread" id="durs"></div></div>
-        <div class="panel mint"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div>
+        <div class="row wrap" style="gap:12px"><div class="panel lilac grow"><div class="panel-label">Durée</div><div class="spread" id="durs"></div></div>
+        <div class="panel mint grow"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div></div>
       </div>` : '';
-    const actionsInner = host
-      ? `<button class="btn btn--yellow block" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Le hasard décide'}</button>
-         <button class="btn btn--teal block" id="launch" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer la partie ▶"}</button>
-         <div class="center" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — il faut au moins 2 joueurs':"L'hôte lance quand tout le monde est prêt"}</div>`
-      : `<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ L'hôte choisit et lance la partie…</div>`;
-
     mMount(`
       <section class="screen salon-screen" style="justify-content:flex-start;overflow:visible">
-        <div class="stage wide" style="max-width:1080px;gap:18px">
-          <header class="row between wrap" style="gap:14px">
-            <div class="row gap8"><div style="width:46px;height:46px;background:#FF5D73;border:3px solid #3B2D5E;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 5px 0 #C23A50;transform:rotate(-4deg)">🎲</div>
-              <div class="col" style="line-height:1.05"><div style="font-size:24px;font-weight:800">Shepa Jouer</div><div style="font-size:14px;font-weight:700;color:#9B5DE5">Salon de ${esc(v.hostName)}</div></div></div>
-            <div class="row gap8" style="align-items:center">
-              <span class="pill paper" style="font-size:15px;font-weight:800">🪙 ${SJ.store.get('coins')}</span>
-              <button id="editme" style="display:inline-flex;align-items:center;gap:7px;background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 12px 3px 4px;cursor:pointer;box-shadow:0 4px 0 #C9BBE8;font-family:inherit;font-weight:700;font-size:15px;color:#3B2D5E">${U().ava(avatarP,30)}<span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(SJ.store.get('pseudo')||'moi')}</span><span style="font-size:13px">✏️</span></button>
+        <div class="stage wide" style="max-width:1080px;gap:16px">
+          <header class="row between wrap" style="gap:12px">
+            <div class="row gap8"><div style="width:44px;height:44px;background:#FF5D73;border:3px solid #3B2D5E;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:23px;box-shadow:0 5px 0 #C23A50;transform:rotate(-4deg)">🎲</div>
+              <div class="col" style="line-height:1.05"><div style="font-size:23px;font-weight:800">Shepa Jouer</div><div style="font-size:13px;font-weight:700;color:#9B5DE5">Salon de ${esc(v.hostName)}</div></div></div>
+            <div class="row gap6 wrap" style="align-items:center;justify-content:flex-end">
+              <button class="pill paper" id="copy" style="cursor:pointer;font-size:14px;font-weight:800;letter-spacing:2px">📨 ${esc(v.code||'')} ⎘</button>
+              <span class="pill paper" style="font-size:14px;font-weight:800">🪙 ${SJ.store.get('coins')}</span>
+              <button id="editme" style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 11px 3px 4px;cursor:pointer;box-shadow:0 4px 0 #C9BBE8;font-family:inherit;font-weight:700;font-size:14px;color:#3B2D5E">${U().ava(avatarP,28)}<span style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(SJ.store.get('pseudo')||'moi')}</span> ✏️</button>
               ${host?`<button class="pill lilac cfg-mobile" id="cfg" style="cursor:pointer;font-size:16px">⚙️</button>`:''}
               <button class="btn btn--ghost sm" id="back">← quitter</button>
             </div>
           </header>
-          <div class="row wrap" style="gap:20px;align-items:flex-start">
-            <div class="col grow" style="flex:2.2;min-width:300px;gap:14px">
-              <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap"><h2 style="font-size:clamp(24px,4vw,34px);font-weight:800;text-shadow:0 4px 0 #FFD9B8">Votez pour un jeu&nbsp;!</h2><span class="caveat" style="font-size:20px">tape une carte 👆</span></div>
-              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(214px,1fr));gap:16px">${cards}</div>
-            </div>
-            <div class="col" style="flex:1;min-width:280px;gap:16px">
-              <div class="card sh-blue" style="display:flex;flex-direction:column;gap:12px">
-                <div style="font-size:18px;font-weight:800">📨 Invite tes amis</div>
-                <div style="border:3px dashed #3B2D5E;border-radius:14px;padding:8px 0;text-align:center;font-size:28px;font-weight:800;letter-spacing:6px;background:#F4EFFF">${esc(v.code||'')}</div>
-                <button class="btn btn--blue block" id="copy">⎘ Copier le lien</button>
-              </div>
-              ${settingsPanel}
-              <div class="card sh-teal" style="display:flex;flex-direction:column;gap:10px">
-                <div class="row between"><div style="font-size:18px;font-weight:800">👥 Joueurs</div><span class="pill mint" style="font-size:14px"><span id="salon-pcount">${v.players.length}</span>/10</span></div>
-                <div id="salon-players" class="col" style="gap:10px">${playerListHTML(v)}</div>
-              </div>
-              <div class="card salon-actions" style="display:flex;flex-direction:column;gap:12px;background:#9B5DE5;color:#fff;box-shadow:0 9px 0 #4A2E9E">
-                <div class="center" style="min-height:42px;display:flex;flex-direction:column;justify-content:center">
-                  <div id="salon-stt" style="font-size:20px;font-weight:800;line-height:1.1">${esc(s.status.title)}</div>
-                  <div id="salon-sts" style="font-size:14px;font-weight:600;color:#EADBFF">${esc(s.status.sub)}</div>
-                </div>
-                ${actionsInner}
-              </div>
-            </div>
+
+          <div class="card salon-top">
+            <div class="salon-st"><div id="salon-stt">${esc(s.status.title)}</div><div id="salon-sts">${esc(s.status.sub)}</div></div>
+            <div class="salon-avs grow" id="salon-avs">${salonAvs(v)}</div>
+            <div class="salon-actions" id="salon-actions">${actionsInner}</div>
           </div>
+
+          <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap"><h2 style="font-size:clamp(22px,4vw,32px);font-weight:800;text-shadow:0 4px 0 #FFD9B8">Votez pour un jeu&nbsp;!</h2><span class="caveat" style="font-size:19px">tape une carte 👆</span></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(214px,1fr));gap:16px">${cards}</div>
+          ${settingsPanel}
         </div>
       </section>`);
     app().querySelectorAll('.gcard').forEach(c=> c.onclick=()=>{ if(s.spinning) return; SJ.audio.pop(); act('vote',{g:+c.dataset.gc}); });
@@ -340,16 +324,14 @@ SJ.room = (function(){
       const lb=$('#launch'); if(lb) lb.onclick=()=>act('launch');
       renderDurs(); renderPacks(); }
   }
+  function salonAvs(v){ return v.players.map(p=>{ const voted=p.vote!=null;
+      return `<span title="${esc(p.name)}" style="position:relative;display:inline-block;${voted?'':'opacity:.5'}">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},34)}${voted?'<span style="position:absolute;bottom:-2px;right:-3px;background:#2EC4B6;border:2px solid #3B2D5E;border-radius:50%;width:17px;height:17px;font-size:10px;color:#fff;display:flex;align-items:center;justify-content:center">✓</span>':''}${p.isHost?'<span style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:12px">👑</span>':''}</span>`;
+    }).join(''); }
   function gcVotersHTML(g){ return g.voters.length
     ? `<div style="display:flex">${g.voters.map(vt=>`<span style="width:26px;height:26px;border-radius:50%;border:2px solid #3B2D5E;background:${vt.color};margin-left:-6px;display:flex;align-items:center;justify-content:center;font-size:13px">${esc(vt.emoji)}</span>`).join('')}</div>`
     : `<span style="font-size:12px;font-weight:700;opacity:.8">sois le 1er 🙌</span>`; }
   function gcLeadHTML(g){ return g.isLeader?`<span style="background:#FFC93C;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">👑 en tête</span>`:''; }
   function gcRingHTML(g){ return g.isWinner?`<div style="position:absolute;inset:-3px;border:4px solid #FFC93C;border-radius:22px;box-shadow:0 0 0 5px rgba(255,201,60,.45);pointer-events:none"></div><div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:32px" class="pop">👑</div>`:''; }
-  function playerListHTML(v){ const s=v.salon; return v.players.map(p=>{
-      const g=(p.vote!=null)?s.games[p.vote]:null;
-      const tag=g?`<span style="font-size:12px;font-weight:700;color:#3B2D5E;background:${g.tint||'#fff'};border:2px solid #3B2D5E;border-radius:999px;padding:2px 9px;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.name)}</span>`:`<span style="font-size:12px;font-weight:700;color:#A99CC9;font-style:italic">réfléchit…</span>`;
-      return `<div class="row" style="gap:10px">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},36)}<div class="grow row gap6" style="min-width:0"><span style="font-size:17px;font-weight:700">${esc(p.name)}</span>${p.you?'<span class="pill paper" style="font-size:11px;padding:0 8px">toi</span>':''}${p.isHost?'<span>👑</span>':''}</div>${tag}</div>`;
-    }).join(''); }
   function patchSalon(v){
     const s=v.salon; if(!s) return;
     s.games.forEach((g,i)=>{ const card=app().querySelector('.gcard[data-gc="'+i+'"]'); if(!card) return;
@@ -359,12 +341,11 @@ SJ.room = (function(){
       const ld=card.querySelector('.gc-lead'); if(ld) ld.innerHTML=gcLeadHTML(g);
       const rg=card.querySelector('.gc-ring'); if(rg) rg.innerHTML=gcRingHTML(g);
     });
-    const pl=app().querySelector('#salon-players'); if(pl) pl.innerHTML=playerListHTML(v);
-    const pc=app().querySelector('#salon-pcount'); if(pc) pc.textContent=v.players.length;
+    const av=app().querySelector('#salon-avs'); if(av) av.innerHTML=salonAvs(v);
     const stt=app().querySelector('#salon-stt'); if(stt) stt.textContent=s.status.title;
     const sts=app().querySelector('#salon-sts'); if(sts) sts.textContent=s.status.sub;
-    const lb=app().querySelector('#launch'); if(lb){ lb.disabled=v.players.length<2; lb.textContent=(s.winner!=null?"C'est parti ▶":"Lancer la partie ▶"); }
-    const rb=app().querySelector('#rand'); if(rb) rb.textContent=s.spinning?'🌀 Tirage…':'🎲 Le hasard décide';
+    const lb=app().querySelector('#launch'); if(lb){ lb.disabled=v.players.length<2; lb.textContent=(s.winner!=null?"C'est parti ▶":"Lancer ▶"); }
+    const rb=app().querySelector('#rand'); if(rb) rb.textContent=s.spinning?'🌀 Tirage…':'🎲 Hasard';
   }
   function reenterSalon(){
     const p=profile(); curKey=null;
@@ -493,6 +474,9 @@ SJ.room = (function(){
   function rProposeTP(v){
     const d=v.dilemma||{a:'',b:''}, mine=v.proposerId===v.meId;
     if(mine){
+      const nv=Math.max(1, v.players.length-1);   // votants = joueurs sauf l'auteur
+      const opts=[]; const seen={}; for(let k=0;k<=nv;k++){ const pct=Math.round(100*k/nv); if(!seen[pct]){ seen[pct]=1; opts.push({k,pct}); } }
+      const defPct=opts[Math.floor(opts.length/2)].pct;
       mMount(`<section class="screen"><div class="stage game card" style="max-width:480px;gap:13px;background:#FFF8EC;box-shadow:0 10px 0 #FFC93C">
         ${U().topbar(`Manche ${v.round}/${v.rounds} — à toi le dilemme 🖊️`, 'frozen')}
         ${scoreStrip(v)}
@@ -501,15 +485,16 @@ SJ.room = (function(){
         <div class="center" style="font-weight:800;color:#9B5DE5">— ou —</div>
         <div class="row gap8" style="background:#FFE1E7;border:3px solid #3B2D5E;border-radius:14px;padding:8px 10px"><div style="width:34px;height:34px;background:#FF8FA3;border:3px solid #3B2D5E;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none">B</div><input id="optB" class="field" style="border:none;background:transparent;padding:0;box-shadow:none" maxlength="42" value="${esc(d.b)}" placeholder="Option B…"></div>
         <div class="panel" style="background:#fff;border:3px solid #3B2D5E;gap:10px;align-items:center">
-          <div style="font-size:16px;font-weight:800;text-align:center">Quel % choisira <span style="color:#2EC4B6">A</span> ? 🤫</div>
-          <div id="predLbl" style="width:80px;height:80px;border:4px solid #3B2D5E;border-radius:50%;background:#FFF1C9;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;box-shadow:0 5px 0 #E8C766">50%</div>
-          <input id="pred" type="range" min="0" max="100" value="50" style="width:100%">
-          <div class="muted" style="font-size:13px;font-weight:700;text-align:center">🤫 ta prédiction reste cachée jusqu'à la révélation</div>
+          <div style="font-size:16px;font-weight:800;text-align:center">Combien des <b>${nv}</b> votant${nv>1?'s':''} choisiront <span style="color:#2EC4B6">A</span> ? 🤫</div>
+          <div id="predLbl" style="width:78px;height:78px;border:4px solid #3B2D5E;border-radius:50%;background:#FFF1C9;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;box-shadow:0 5px 0 #E8C766">${defPct}%</div>
+          <div class="row wrap" style="justify-content:center;gap:6px" id="predbtns">${opts.map(o=>`<button class="predb" data-p="${o.pct}" style="border:3px solid #3B2D5E;border-radius:12px;background:${o.pct===defPct?'#FFC93C':'#fff'};font-family:inherit;font-weight:800;font-size:15px;padding:6px 10px;cursor:pointer;color:#3B2D5E;line-height:1.05">${o.pct}%<br><span style="font-size:10px;opacity:.65;font-weight:700">${o.k}/${nv}</span></button>`).join('')}</div>
+          <div class="muted" style="font-size:12px;font-weight:700;text-align:center">🤫 caché jusqu'à la révélation · seuls ces % sont possibles à ${nv} votant${nv>1?'s':''}</div>
         </div>
         <button class="btn btn--teal block" id="send">Envoyer aux autres ▶</button>
       </div></section>`);
-      const pr=$('#pred'), lbl=$('#predLbl'); pr.oninput=()=>{ lbl.textContent=pr.value+'%'; };
-      $('#send').onclick=()=>{ const a=$('#optA').value.trim()||d.a||'Option A', b=$('#optB').value.trim()||d.b||'Option B'; SJ.audio.validate(); act('dilemma',{a,b,pred:+pr.value}); };
+      let selPct=defPct; const lbl=$('#predLbl');
+      app().querySelectorAll('.predb').forEach(b=> b.onclick=()=>{ selPct=+b.dataset.p; lbl.textContent=selPct+'%'; app().querySelectorAll('.predb').forEach(x=>x.style.background='#fff'); b.style.background='#FFC93C'; SJ.audio.click(); });
+      $('#send').onclick=()=>{ const a=$('#optA').value.trim()||d.a||'Option A', b=$('#optB').value.trim()||d.b||'Option B'; SJ.audio.validate(); act('dilemma',{a,b,pred:selPct}); };
     } else {
       mMount(`<section class="screen"><div class="stage game card sh-pink" style="max-width:460px;gap:14px">
         ${U().topbar(`Manche ${v.round}/${v.rounds}`, 'frozen')}
