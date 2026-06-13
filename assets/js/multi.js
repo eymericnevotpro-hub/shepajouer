@@ -250,6 +250,7 @@ SJ.room = (function(){
     if(mine){
       mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px">
         ${U().topbar(`Tour ${v.round}/${v.rounds} — c'est <b style="color:#9B5DE5">toi</b> le proposeur !`, 'frozen')}
+        ${scoreStrip(v)}
         <div class="cadran-wrap" id="cad"></div>
         <div class="theme-card"><div class="theme-pole" style="text-align:left">${esc(th.el)} ${esc(th.left)}</div><div class="muted" style="font-size:14px;font-weight:700;white-space:nowrap">← carte thème →</div><div class="theme-pole" style="text-align:right">${esc(th.right)} ${esc(th.er)}</div></div>
         <div class="spread"><input id="clue" class="field grow" placeholder="Ton indice… ex : « un bain tiède »" maxlength="40"><button class="btn btn--purple" id="send" style="width:140px">Envoyer 🚀</button></div>
@@ -261,6 +262,7 @@ SJ.room = (function(){
     } else {
       mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px">
         ${U().topbar(`Tour ${v.round}/${v.rounds}`, 'frozen')}
+        ${scoreStrip(v)}
         <div class="cadran-wrap" id="cad"></div>
         <div class="theme-card"><div class="theme-pole" style="text-align:left">${esc(th.el)} ${esc(th.left)}</div><div class="muted" style="font-size:14px;font-weight:700;white-space:nowrap">← thème →</div><div class="theme-pole" style="text-align:right">${esc(th.right)} ${esc(th.er)}</div></div>
         <div class="clue-bubble" style="background:#F4EFFF;box-shadow:0 5px 0 #C9BBE8">💭 ${esc(v.proposerName)} réfléchit à un indice…</div>
@@ -275,6 +277,7 @@ SJ.room = (function(){
     if(mine){
       mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px">
         ${U().topbar(`Tour ${v.round}/${v.rounds} — les autres devinent…`)}
+        ${scoreStrip(v)}
         <div class="clue-bubble">${esc(v.clue)}</div>
         <div class="cadran-wrap" id="cad"></div>
         <div class="center muted" style="font-weight:700"><span id="prog">${v.guessProgress.validated}/${v.guessProgress.total}</span> ont validé · révélation auto</div>
@@ -284,6 +287,7 @@ SJ.room = (function(){
     }
     mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px">
       ${U().topbar(`Tour ${v.round}/${v.rounds} — indice de <b style="color:#FF5D73">${esc(v.proposerName)}</b>`)}
+      ${scoreStrip(v)}
       <div class="clue-bubble">${esc(v.clue)}</div>
       <div class="cadran-wrap" id="cad"></div>
       <div class="row" style="gap:14px"><div class="grow center muted" style="font-weight:700"><span id="prog">${v.guessProgress.validated}/${v.guessProgress.total}</span> ont validé</div>
@@ -297,11 +301,24 @@ SJ.room = (function(){
   }
   function patchGuess(v){ const p=$('#prog'); if(p) p.textContent=`${v.guessProgress.validated}/${v.guessProgress.total}`; }
 
+  // mini tableau des scores affiché en permanence pendant la partie (trié, "Toi" + proposeur 🎤 mis en avant)
+  function scoreStrip(v){
+    if(!v.players || !v.players.length) return '';
+    const rows=v.players.slice().sort((a,b)=>b.score-a.score).map(p=>{
+      const me=p.id===v.meId, prop=p.id===v.proposerId;
+      return `<span style="display:inline-flex;align-items:center;gap:5px;background:${me?'#FFF1C9':'#fff'};border:2px solid #3B2D5E;border-radius:999px;padding:2px 11px 2px 3px;font-size:13px;font-weight:700;white-space:nowrap">`
+        +`${U().ava({avatar:p.avatar,emoji:p.emoji,bg:p.bg},22)}`
+        +`<span>${prop?'🎤 ':''}${me?'Toi':esc(p.name)}</span><b style="color:#9B5DE5">${p.score}</b></span>`;
+    }).join('');
+    return `<div class="row wrap" style="justify-content:center;gap:6px;width:100%">${rows}</div>`;
+  }
+
   // ---------- REVEAL ----------
   function rReveal(v){
     const r=v.reveal; if(!r){ return; }
     mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px;position:relative">
       <div class="topbar"><span class="pill lilac tb-label" style="font-size:16px">Tour ${v.round}/${v.rounds} — résultats !</span><span class="pill mint tb-timer" id="nextpill" style="font-size:16px">suivant…</span></div>
+      ${scoreStrip(v)}
       <div class="clue-bubble" style="font-size:19px">${esc(v.proposerName)} : ${esc(v.clue)}</div>
       <div class="cadran-wrap" id="cad"></div>
       <div class="row wrap" id="chips" style="justify-content:center;gap:10px"></div>
