@@ -68,6 +68,8 @@ SJ.room = (function(){
     } else if(m.t==='profile'){ const p=players.find(x=>x.id===id); if(p){ p.name=(m.name||p.name).slice(0,14); p.avatar=m.avatar; p.emoji=m.emoji; p.hat=m.hat; p.hatPos=m.hatPos; p.bg=m.bg; hostRefresh(); }
     } else if(m.t==='perm'){ if(M&&M.perms){ M.perms[id]={mic:!!m.mic,cam:!!m.cam}; hostRefresh(); }
     } else if(m.t==='pbresp'){ if(M&&phase==='pbplay'){ M.responses[id]={choice:m.choice,ok:m.ok,dt:m.dt}; pbMaybeResolve(); }
+    } else if(m.t==='ucclue'){ if(M&&M.gameType==='undercover') ucClueSubmit(id, m.word);
+    } else if(m.t==='ucvote'){ if(M&&M.gameType==='undercover') ucVoteSubmit(id, m.target);
     } else if(m.t==='leave'){ hostOnLeave(id); }
   }
   function hostOnLeave(id){
@@ -86,6 +88,7 @@ SJ.room = (function(){
     const real=players.length;
     if(real<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
     if(gameId==='partybox'){ pbStart(); return; }
+    if(gameId==='bluff'){ ucStart(); return; }
     const dur=SJ.DURATIONS.find(d=>d.id===settings.durationId)||SJ.DURATIONS[1];
     const pool=[]; (settings.packs.length?settings.packs:['classique']).forEach(id=>(SJ.THEMES[id]||[]).forEach(t=>pool.push(t)));
     players.forEach(p=>p.score=0);
@@ -179,6 +182,18 @@ SJ.room = (function(){
         };
         return v;
       }
+      if(M.gameType==='undercover'){
+        v.gameType='undercover';
+        const alive=players.filter(p=>M.alive[p.id]);
+        v.uc={ round:M.round, alive:alive.length, total:players.length, myWord:M.words[forId]||'', iAmAlive:!!M.alive[forId],
+          roster:players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,you:(p.id===forId),alive:!!M.alive[p.id]})) };
+        if(phase==='ucclue'){ v.uc.myClue=M.clues[forId]||null; v.uc.progress={done:alive.filter(p=>M.clues[p.id]!=null).length,total:alive.length}; }
+        else if(phase==='ucvote'){ v.uc.clues=alive.map(p=>({id:p.id,name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,you:(p.id===forId),clue:M.clues[p.id]||'…'})); v.uc.myVote=M.votes[forId]||null; v.uc.progress={done:alive.filter(p=>M.votes[p.id]!=null).length,total:alive.length}; }
+        else if(phase==='ucreveal'){ v.uc.elim=M.lastElim?{name:M.lastElim.name,emoji:M.lastElim.emoji,avatar:M.lastElim.avatar,hat:M.lastElim.hat,hatPos:M.lastElim.hatPos,bg:M.lastElim.bg,role:M.lastElim.role,word:M.lastElim.word}:null; v.uc.tally=M.tally; v.uc.winners=M.winners; }
+        else if(phase==='ucover'){ v.uc.winners=M.winners; v.uc.wCivil=M.wCivil; v.uc.wUnder=M.wUnder; v.uc.earned=(M.coins[forId]||0); v.uc.iWon=(M.roles[forId]===M.winners);
+          v.uc.reveal=players.map(p=>({name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,role:M.roles[p.id],word:M.words[p.id],you:(p.id===forId)})); }
+        return v;
+      }
       const prop=proposer(); const gs=guessers();
       v.gameType=M.gameType; v.proposerId=prop.id; v.proposerName=prop.name;
       if(phase==='podium'){
@@ -238,6 +253,8 @@ SJ.room = (function(){
       else if(type==='dilemma') net.send({t:'dilemma', a:payload.a, b:payload.b, pred:payload.pred});
       else if(type==='pick') net.send({t:'pick', c:payload.c});
       else if(type==='pbresp') net.send({t:'pbresp', choice:payload.choice, ok:payload.ok, dt:payload.dt});
+      else if(type==='ucclue') net.send({t:'ucclue', word:payload.word});
+      else if(type==='ucvote') net.send({t:'ucvote', target:payload.target});
       return;
     }
     // host / solo
@@ -252,6 +269,11 @@ SJ.room = (function(){
     else if(type==='pbstart'){ if(M&&M.gameType==='partybox') pbToCountdown(); }
     else if(type==='pbresp'){ if(M&&phase==='pbplay'){ M.responses[myId]=payload; pbMaybeResolve(); } }
     else if(type==='pbagain'){ if(M&&M.gameType==='partybox'){ players.forEach(p=>{ M.lives[p.id]=3; M.pts[p.id]=0; M.coins[p.id]=0; }); M.elim={}; M.surv={}; M.lastRes={}; M.round=0; M.lastKey=null; M.winnerId=null; coinsClaimed=false; pbToCountdown(); } }
+    else if(type==='ucgo'){ if(M&&M.gameType==='undercover'&&phase==='ucintro') ucGo(); }
+    else if(type==='ucclue'){ if(M&&M.gameType==='undercover') ucClueSubmit(myId, payload.word); }
+    else if(type==='ucvote'){ if(M&&M.gameType==='undercover') ucVoteSubmit(myId, payload.target); }
+    else if(type==='ucnext'){ if(M&&M.gameType==='undercover'&&phase==='ucreveal') ucFinishOrNext(); }
+    else if(type==='ucagain'){ if(M&&M.gameType==='undercover') ucStart(); }
     else if(type==='next'){ mClear(); nextRound(); }
     else if(type==='restart'){ hostStart(M?M.gameType:'wavelength'); }
   }
@@ -266,6 +288,8 @@ SJ.room = (function(){
     if(v.phase==='lobby'){ if(same) patchSalon(v); else { curKey=key; rLobby(v); } return; }
     if(v.phase==='pbperm'){ curKey=key; rPbPerm(v); return; }    // re-render à chaque autorisation
     if(v.phase==='guess'){ if(same) patchGuess(v); else { curKey=key; iValidated=false; rGuess(v); } return; }
+    if(v.phase==='ucclue'){ if(same) patchUcProg(v); else { curKey=key; rUcClue(v); } return; }
+    if(v.phase==='ucvote'){ if(same) patchUcProg(v); else { curKey=key; rUcVote(v); } return; }
     if(same) return;                 // propose / reveal / podium / pb : re-render seulement au changement d'état
     curKey=key;
     if(v.phase==='propose') rPropose(v);
@@ -274,6 +298,9 @@ SJ.room = (function(){
     else if(v.phase==='pbcount') rPbCount(v);
     else if(v.phase==='pbplay') rPbPlay(v);
     else if(v.phase==='pbover') rPbOver(v);
+    else if(v.phase==='ucintro') rUcIntro(v);
+    else if(v.phase==='ucreveal') rUcReveal(v);
+    else if(v.phase==='ucover') rUcOver(v);
   }
 
   // ---------- SALON (menu principal : invite + vote du jeu) ----------
@@ -801,6 +828,130 @@ SJ.room = (function(){
     if(o.iWon){ SJ.audio.win(); U().confetti(60); } else { SJ.audio.lose(); U().confetti(22); }
     if(!coinsClaimed){ SJ.store.addCoins(o.earned||0); coinsClaimed=true; }
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('pbagain'); };
+    $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
+  }
+
+  /* ================= BLUFFE-MOI (UNDERCOVER) ================= */
+  function ucAliveList(){ return players.filter(p=>M.alive[p.id]); }
+  function ucStart(){
+    if(players.length<3){ U().toast('Bluffe-moi : il faut au moins 3 joueurs 🙂'); return; }
+    players.forEach(p=>p.score=0);
+    const pair=SJ.UNDERCOVER[Math.floor(Math.random()*SJ.UNDERCOVER.length)];
+    const swap=Math.random()<0.5; const wCivil=swap?pair.under:pair.civil, wUnder=swap?pair.civil:pair.under;
+    const nUnder=players.length<=5?1:2;
+    const idx=players.map((_,i)=>i); for(let i=idx.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [idx[i],idx[j]]=[idx[j],idx[i]]; }
+    const underSet={}; for(let k=0;k<nUnder;k++) underSet[players[idx[k]].id]=true;
+    M={ gameType:'undercover', wCivil, wUnder, nUnder, roles:{}, words:{}, alive:{}, round:0, clues:{}, votes:{}, lastElim:null, tally:[], winners:null, coins:{} };
+    players.forEach(p=>{ const u=!!underSet[p.id]; M.roles[p.id]=u?'under':'civil'; M.words[p.id]=u?wUnder:wCivil; M.alive[p.id]=true; M.coins[p.id]=0; });
+    coinsClaimed=false; phase='ucintro'; curKey=null; SJ.audio.pop(); U().confetti(16); hostRefresh();
+  }
+  function ucGo(){ M.round++; M.clues={}; M.votes={}; phase='ucclue'; curKey=null; hostRefresh();
+    mAfter(70000, ()=>{ if(phase==='ucclue'){ ucAliveList().forEach(p=>{ if(M.clues[p.id]==null) M.clues[p.id]='…'; }); ucToVote(); } }); }
+  function ucToVote(){ phase='ucvote'; curKey=null; hostRefresh(); mAfter(60000, ()=>{ if(phase==='ucvote') ucResolve(); }); }
+  function ucClueSubmit(id, word){ if(phase!=='ucclue'||!M||!M.alive[id]||M.clues[id]!=null) return;
+    M.clues[id]=String(word||'').slice(0,24).trim()||'…';
+    if(ucAliveList().every(p=>M.clues[p.id]!=null)) ucToVote(); else hostRefresh(); }
+  function ucVoteSubmit(voterId, targetId){ if(phase!=='ucvote'||!M||!M.alive[voterId]||M.votes[voterId]!=null) return;
+    if(!M.alive[targetId]||targetId===voterId) return; M.votes[voterId]=targetId;
+    if(ucAliveList().every(p=>M.votes[p.id]!=null)) ucResolve(); else hostRefresh(); }
+  function ucResolve(){
+    if(phase!=='ucvote') return; mClear();
+    const counts={}; ucAliveList().forEach(p=>counts[p.id]=0);
+    Object.keys(M.votes).forEach(v=>{ const t=M.votes[v]; if(counts[t]!=null) counts[t]++; });
+    M.tally=ucAliveList().map(p=>({id:p.id,name:p.name,emoji:p.emoji,votes:counts[p.id]})).sort((a,b)=>b.votes-a.votes);
+    let elimId=null;
+    if(M.tally.length){ const top=M.tally[0].votes, tied=M.tally.filter(t=>t.votes===top); if(top>0&&tied.length===1) elimId=M.tally[0].id; }
+    if(elimId){ M.alive[elimId]=false; const p=players.find(x=>x.id===elimId); M.lastElim={id:elimId,name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,role:M.roles[elimId],word:M.words[elimId]}; }
+    else M.lastElim=null;
+    const aliveU=ucAliveList().filter(p=>M.roles[p.id]==='under').length, aliveC=ucAliveList().filter(p=>M.roles[p.id]==='civil').length;
+    M.winners = aliveU===0 ? 'civil' : (aliveU>=aliveC ? 'under' : null);
+    phase='ucreveal'; curKey=null; hostRefresh();
+  }
+  function ucFinishOrNext(){ if(M.winners) ucOver(); else ucGo(); }
+  function ucOver(){ phase='ucover'; const wr=M.winners;
+    players.forEach(p=>{ const win=M.roles[p.id]===wr; M.coins[p.id]=(M.coins[p.id]||0)+(win?6:1); if(win) p.score+=1; });
+    curKey=null; hostRefresh(); }
+  function patchUcProg(v){ const uc=v.uc; if(!uc||!uc.progress) return; const p=app().querySelector('#prog'); if(p) p.textContent=uc.progress.done; }
+
+  function rUcIntro(v){ const uc=v.uc;
+    mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:16px;align-items:stretch;text-align:center">
+      <div class="card sh-pink" style="display:flex;flex-direction:column;gap:8px"><div style="font-size:24px;font-weight:800">🎭 Bluffe-moi</div>
+        <div style="font-size:14px;font-weight:600;color:#3B2D5E">Presque tout le monde a le <b>même mot</b>. Un imposteur en a un <b>différent</b> ! Donne un indice pour prouver que tu connais ton mot… sans aider l'autre 🤫</div></div>
+      <div class="card" style="background:#3B2D5E;color:#fff;box-shadow:0 10px 0 #1f1636;display:flex;flex-direction:column;gap:6px;align-items:center;padding:26px">
+        <div style="font-size:13px;font-weight:700;color:#C9BBE8;letter-spacing:1px">TON MOT SECRET</div>
+        <div class="pop" style="font-size:40px;font-weight:800">${esc(uc.myWord)}</div>
+        <div style="font-size:12px;color:#C9BBE8;font-weight:700">ne le montre à personne 👀</div></div>
+      ${v.iAmHost?`<button class="btn btn--coral lg block" id="go">Lancer les indices ▶</button>`:'<div class="center muted" style="font-weight:700">⏳ l\'hôte lance le 1er tour…</div>'}
+      <button class="btn btn--ghost sm" id="quit" style="align-self:flex-start">← quitter</button>
+    </div></section>`);
+    if(v.iAmHost){ const g=$('#go'); if(g) g.onclick=()=>{ SJ.audio.click(); act('ucgo'); }; }
+    $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
+  }
+  function rUcClue(v){ const uc=v.uc, dead=!uc.iAmAlive, mine=uc.myClue;
+    mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:14px">
+      <div class="row between"><span class="pill lilac" style="font-weight:800">Tour ${uc.round} · indices</span><span class="pill mint" style="font-weight:800">${uc.alive} en jeu</span></div>
+      <div class="card sh-pink" id="uccard" style="display:flex;flex-direction:column;gap:12px">
+        <div class="center" style="font-size:15px;font-weight:700;color:#3B2D5E">Ton mot : <b style="color:#D45D75">${esc(uc.myWord)}</b></div>
+        ${dead?'<div class="center muted" style="font-weight:700;padding:10px">👻 Tu es éliminé — tu observes.</div>'
+          : mine?`<div class="center" style="font-size:20px;font-weight:800;color:#2EC4B6">✅ Indice envoyé : « ${esc(mine)} »</div>`
+          : `<div class="center" style="font-size:15px;font-weight:700">Donne <b>un seul mot</b> en rapport 🤫</div>
+             <input id="clue" class="field" maxlength="24" placeholder="ton indice…" style="text-align:center;font-size:20px;font-weight:800">
+             <button class="btn btn--teal block" id="send">Envoyer ▶</button>`}
+      </div>
+      <div class="center muted" style="font-weight:700"><span id="prog">${uc.progress.done}</span>/${uc.progress.total} ont donné leur indice</div>
+    </div></section>`);
+    if(!dead && !mine){ const inp=$('#clue'), send=$('#send');
+      const go=()=>{ const w=(inp.value||'').trim(); if(!w){ U().toast('Écris un mot 🙂'); return; } SJ.audio.validate(); act('ucclue',{word:w});
+        const c=$('#uccard'); if(c) c.innerHTML=`<div class="center" style="font-size:15px;font-weight:700;color:#3B2D5E">Ton mot : <b style="color:#D45D75">${esc(uc.myWord)}</b></div><div class="center" style="font-size:20px;font-weight:800;color:#2EC4B6">✅ Indice envoyé : « ${esc(w)} »</div>`; };
+      if(send) send.onclick=go; if(inp){ inp.onkeydown=(e)=>{ if(e.key==='Enter') go(); }; inp.focus(); }
+    }
+  }
+  function rUcVote(v){ const uc=v.uc, dead=!uc.iAmAlive, voted=uc.myVote;
+    const cards=uc.clues.map(c=>`<button class="ucvote" data-id="${c.id}" ${(dead||c.you)?'disabled':''} style="display:flex;align-items:center;gap:10px;text-align:left;border:3px solid #3B2D5E;border-radius:16px;background:${voted===c.id?'#FFF1C9':'#fff'};padding:10px 12px;cursor:${(dead||c.you)?'default':'pointer'};box-shadow:0 5px 0 #C9BBE8;font-family:inherit;${(dead||c.you)?'opacity:.72':''}">
+        ${U().ava({avatar:c.avatar,emoji:c.emoji,hat:c.hat,hatPos:c.hatPos,bg:c.bg},36)}
+        <div class="grow" style="min-width:0"><div style="font-weight:800;font-size:15px;color:#3B2D5E">${c.you?'Toi':esc(c.name)}</div><div style="font-size:18px;font-weight:800;color:#D45D75">« ${esc(c.clue)} »</div></div>
+        ${voted===c.id?'<span style="font-size:20px">🗳️</span>':''}</button>`).join('');
+    mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:13px">
+      <div class="row between"><span class="pill lilac" style="font-weight:800">Tour ${uc.round} · vote</span><span class="pill mint" style="font-weight:800">${uc.alive} en jeu</span></div>
+      <div class="center" style="font-size:19px;font-weight:800">Qui est l'imposteur ? 🕵️</div>
+      <div class="col" style="gap:9px">${cards}</div>
+      <div class="center muted" style="font-weight:700">${dead?'👻 tu observes':`<span id="prog">${uc.progress.done}</span>/${uc.progress.total} ont voté`}</div>
+    </div></section>`);
+    if(!dead && !voted){ app().querySelectorAll('.ucvote').forEach(b=> b.onclick=()=>{ if(b.disabled) return; SJ.audio.validate();
+      app().querySelectorAll('.ucvote').forEach(x=>{ x.style.outline='none'; if(x!==b) x.style.opacity='.55'; }); b.style.outline='4px solid #FFC93C'; b.style.outlineOffset='2px';
+      act('ucvote',{target:b.dataset.id}); }); }
+  }
+  function rUcReveal(v){ const uc=v.uc, e=uc.elim, isUnder=e&&e.role==='under';
+    const head = !e ? {t:"🤐 Égalité — personne n'est éliminé",c:'sh-purple'} : isUnder ? {t:`🎯 ${e.name} était un IMPOSTEUR !`,c:'sh-teal'} : {t:`😱 ${e.name} était un civil…`,c:'sh-coral'};
+    mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:13px;align-items:stretch;text-align:center">
+      <div class="card ${head.c}" style="display:flex;flex-direction:column;gap:10px;align-items:center">
+        <div class="pop" style="font-size:21px;font-weight:800">${esc(head.t)}</div>
+        ${e?`${U().ava({avatar:e.avatar,emoji:e.emoji,hat:e.hat,hatPos:e.hatPos,bg:e.bg},58)}<div style="font-size:15px;font-weight:700">son mot était <b style="color:${isUnder?'#1E8B81':'#C23A50'}">${esc(e.word)}</b></div>`:'<div style="font-size:14px;font-weight:700;color:#7A6BA8">Les votes étaient partagés.</div>'}
+      </div>
+      <div class="card" style="background:#fff;box-shadow:0 6px 0 #C9BBE8;display:flex;flex-direction:column;gap:5px"><div style="font-size:13px;font-weight:800;color:#7A6BA8">VOTES</div>${uc.tally.map(t=>`<div class="row between" style="font-size:14px;font-weight:700"><span>${esc(t.name)}</span><span>${'🗳️'.repeat(t.votes)} <b>${t.votes}</b></span></div>`).join('')}</div>
+      ${uc.winners?`<div class="center" style="font-size:18px;font-weight:800;color:#9B5DE5">${uc.winners==='civil'?'🏅 Les civils ont gagné !':'🕵️ Les imposteurs gagnent !'}</div>`:''}
+      ${v.iAmHost?`<button class="btn btn--purple block" id="next">${uc.winners?'Voir le résultat ▶':'Tour suivant ▶'}</button>`:'<div class="center muted" style="font-weight:700">⏳ l\'hôte continue…</div>'}
+    </div></section>`);
+    if(SJ.audio.reveal) SJ.audio.reveal();
+    if(v.iAmHost){ const n=$('#next'); if(n) n.onclick=()=>{ SJ.audio.click(); act('ucnext'); }; }
+  }
+  function rUcOver(v){ const uc=v.uc;
+    const rows=uc.reveal.map(p=>`<div class="row" style="gap:10px;align-items:center;background:${p.you?'#FFF1C9':'#fff'};border:3px solid #3B2D5E;border-radius:14px;padding:7px 11px;box-shadow:0 4px 0 #C9BBE8">
+        ${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},34)}
+        <div class="grow" style="font-weight:800;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.you?'Toi':esc(p.name)}</div>
+        <span style="font-size:12px;font-weight:800;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;background:${p.role==='under'?'#FFE1E7':'#E4F8F6'};color:${p.role==='under'?'#D45D75':'#1E8B81'}">${p.role==='under'?'🕵️ imposteur':'🙂 civil'}</span>
+        <b style="font-size:14px;color:#3B2D5E">${esc(p.word)}</b></div>`).join('');
+    mMount(`<section class="screen"><div class="stage" style="max-width:480px;gap:13px;align-items:stretch;text-align:center">
+      <div class="center pop" style="font-size:25px;font-weight:800">${uc.winners==='civil'?'🏅 Les civils gagnent !':'🕵️ Les imposteurs gagnent !'}</div>
+      <div class="center" style="font-size:14px;font-weight:700;color:#7A6BA8">Mot civil : <b>${esc(uc.wCivil)}</b> · mot imposteur : <b>${esc(uc.wUnder)}</b></div>
+      <div class="col" style="gap:7px">${rows}</div>
+      <div class="center"><span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${uc.earned||0} 🪙</span></div>
+      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
+      ${v.iAmHost?'':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
+    </div></section>`);
+    if(uc.iWon){ SJ.audio.win(); U().confetti(55); } else { SJ.audio.lose(); U().confetti(18); }
+    if(!coinsClaimed){ SJ.store.addCoins(uc.earned||0); coinsClaimed=true; }
+    const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('ucagain'); };
     $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
 
