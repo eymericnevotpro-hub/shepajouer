@@ -290,10 +290,11 @@ SJ.screens = (function(){
     SJ.game.startRound(); playRound();
   }
 
-  function topbar(label, color){
-    return `<div class="topbar">
-      <span class="pill lilac tb-label" style="font-size:16px">${label}</span>
-      <span class="pill paper tb-timer" id="timer" style="font-size:17px;font-weight:800">⏱ <span id="t">0:45</span></span></div>`;
+  function topbar(label, mode){
+    const timer = mode==='frozen'
+      ? `<span class="pill tb-timer" style="font-size:16px;background:#E4F8F6">⏱ <span style="opacity:.7">❄️ en pause</span></span>`
+      : `<span class="pill paper tb-timer" id="timer" style="font-size:17px;font-weight:800">⏱ <span id="t">0:45</span></span>`;
+    return `<div class="topbar"><span class="pill lilac tb-label" style="font-size:16px">${label}</span>${timer}</div>`;
   }
   function startTimer(sec, onEnd){
     let t=sec; const set=()=>{ const el=$('#t'); if(el) el.textContent=`${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`; };

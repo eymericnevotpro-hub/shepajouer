@@ -16,6 +16,12 @@ SJ.room = (function(){
   function mClear(){ mPending.forEach(clearTimeout); mPending=[]; if(mTick){clearInterval(mTick);mTick=null;} }
   function mMount(html){ mClear(); app().innerHTML=html; app().scrollTop=0; }
   function mAfter(ms,fn){ const id=setTimeout(fn,ms); mPending.push(id); return id; }
+  // affiche l'horloge (devinette) ou le compte à rebours de révélation — utilisé par hôte ET invités
+  function showClock(sec, rev){
+    if(rev){ const np=$('#nextpill'); if(np) np.textContent=`suivant dans ${Math.max(0,sec)}…`; return; }
+    const el=$('#t'); if(el) el.textContent=`0:${String(Math.max(0,sec)).padStart(2,'0')}`;
+    const tp=$('#timer'); if(tp) tp.style.background = sec<=5 ? '#FFE3E8' : '';
+  }
 
   // ---- état ----
   let role='solo', code=null, net=null, myId='host';
@@ -95,7 +101,7 @@ SJ.room = (function(){
     hostRefresh();
     // timer de sécurité : on révèle au bout de 45s même si tout le monde n'a pas validé
     mTick && clearInterval(mTick);
-    let t=45; mTick=setInterval(()=>{ t--; const el=$('#t'); if(el)el.textContent=`0:${String(Math.max(0,t)).padStart(2,'0')}`; if(t<=0){ clearInterval(mTick); mTick=null; finalize(); } },1000);
+    let t=45; mTick=setInterval(()=>{ t--; showClock(t,false); if(net) net.broadcast({t:'clk',s:Math.max(0,t)}); if(t<=0){ clearInterval(mTick); mTick=null; finalize(); } },1000);
   }
   function checkDone(){ if(phase!=='guess') return; const g=guessers(); if(g.every(p=>M.guesses[p.id]!=null)) finalize(); }
   function finalize(){
@@ -106,7 +112,7 @@ SJ.room = (function(){
     const prop=proposer(); M.ptsRound[prop.id]=best; prop.score+=best;
     players.forEach(p=>{ const c=(M.ptsRound[p.id]||0)*3 + ((M.ptsRound[p.id]>=4)?5:0); M.coins[p.id]=(M.coins[p.id]||0)+c; });
     phase='reveal'; hostRefresh();
-    let n=8; mTick=setInterval(()=>{ n--; const np=$('#nextpill'); if(np)np.textContent=`suivant dans ${n}…`; if(n<=0){ clearInterval(mTick); mTick=null; nextRound(); } },1000);
+    let n=8; mTick=setInterval(()=>{ n--; showClock(n,true); if(net) net.broadcast({t:'clk',s:Math.max(0,n),rev:true}); if(n<=0){ clearInterval(mTick); mTick=null; nextRound(); } },1000);
   }
   function goPodium(){ phase='podium'; hostRefresh(); }
 
@@ -146,7 +152,10 @@ SJ.room = (function(){
     net.join(c, ()=> net.send({ t:'join', name:p.name, avatar:p.avatar, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, bg:p.bg }), onFail);
   }
   function guestOnState(v){ phase=v.phase; renderView(v); }
-  function guestOnMsg(_id,m){ if(m.t==='kicked'){ U().toast('Tu as été retiré de la partie'); quitToHome(); } }
+  function guestOnMsg(_id,m){
+    if(m.t==='kicked'){ U().toast('Tu as été retiré de la partie'); quitToHome(); return; }
+    if(m.t==='clk'){ showClock(m.s, !!m.rev); return; }
+  }
   function guestOnClose(){ U().toast('Connexion à l\'hôte perdue'); quitToHome(); }
 
   /* ================= ACTIONS ================= */
@@ -240,7 +249,7 @@ SJ.room = (function(){
     const th=v.theme, mine=v.proposerId===v.meId;
     if(mine){
       mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px">
-        ${U().topbar(`Tour ${v.round}/${v.rounds} — c'est <b style="color:#9B5DE5">toi</b> le proposeur !`)}
+        ${U().topbar(`Tour ${v.round}/${v.rounds} — c'est <b style="color:#9B5DE5">toi</b> le proposeur !`, 'frozen')}
         <div class="cadran-wrap" id="cad"></div>
         <div class="theme-card"><div class="theme-pole" style="text-align:left">${esc(th.el)} ${esc(th.left)}</div><div class="muted" style="font-size:14px;font-weight:700;white-space:nowrap">← carte thème →</div><div class="theme-pole" style="text-align:right">${esc(th.right)} ${esc(th.er)}</div></div>
         <div class="spread"><input id="clue" class="field grow" placeholder="Ton indice… ex : « un bain tiède »" maxlength="40"><button class="btn btn--purple" id="send" style="width:140px">Envoyer 🚀</button></div>
@@ -251,7 +260,7 @@ SJ.room = (function(){
       $('#send').onclick=go; $('#clue').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
     } else {
       mMount(`<section class="screen"><div class="stage game card sh-purple" style="gap:14px">
-        ${U().topbar(`Tour ${v.round}/${v.rounds}`)}
+        ${U().topbar(`Tour ${v.round}/${v.rounds}`, 'frozen')}
         <div class="cadran-wrap" id="cad"></div>
         <div class="theme-card"><div class="theme-pole" style="text-align:left">${esc(th.el)} ${esc(th.left)}</div><div class="muted" style="font-size:14px;font-weight:700;white-space:nowrap">← thème →</div><div class="theme-pole" style="text-align:right">${esc(th.right)} ${esc(th.er)}</div></div>
         <div class="clue-bubble" style="background:#F4EFFF;box-shadow:0 5px 0 #C9BBE8">💭 ${esc(v.proposerName)} réfléchit à un indice…</div>
