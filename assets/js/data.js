@@ -126,7 +126,49 @@ SJ.GAMES = [
   { id:'quiz',  name:'Quiz éclair',        icon:'⚡', tagline:'Le plus rapide à buzzer rafle la mise.',            time:'8 min',  bg:'#FFC93C', shadow:'#D9A416', text:'#3B2D5E', tint:'#FFF1C9', rot:'-3deg' },
   { id:'chain', name:'Mots en chaîne',     icon:'🔗', tagline:'Rebondis de mot en mot sans casser la chaîne.',     time:'6 min',  bg:'#4D96FF', shadow:'#2F6BC4', text:'#FFFFFF', tint:'#DDEBFF', rot:'4deg' },
   { id:'tupreferes', name:'Tu préfères… ?', icon:'🤔', tagline:"Parie le % qui choisira l'option A.",             time:'8 min',  bg:'#FF5D73', shadow:'#C23A50', text:'#FFFFFF', tint:'#FFE1E6', rot:'-2deg', playable:true },
+  { id:'partybox',  name:'Party Box',       icon:'📦', tagline:"Plein de mini-jeux qui s'enchaînent de plus en plus vite. 3 vies !", time:'∞', bg:'#6A4BD6', shadow:'#4A2E9E', text:'#FFFFFF', tint:'#EADBFF', rot:'2deg', playable:true },
 ];
+
+/* ============================================================
+   PARTY BOX — micro-jeux rapides enchaînés (survie coopérative)
+   make(allowMic) renvoie un micro-jeu : {kind, prompt, ...}
+   kinds: 'tapmash' (tape N fois), 'choice' (tape la bonne option),
+          'crie' (mic). Pour 'choice', `correct` reste côté hôte.
+   ============================================================ */
+SJ.PB = (function(){
+  const ri = (n)=> Math.floor(Math.random()*n);
+  const shuffle = (a)=>{ for(let i=a.length-1;i>0;i--){ const j=ri(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+  const EMO = ['🍕','🐸','👾','🦄','🤖','🍔','👻','🌵','⭐','🎈','🐱','🍩','🚀','🎩'];
+  const COLORS = [{n:'Rouge',c:'#FF5D73'},{n:'Bleu',c:'#4D96FF'},{n:'Vert',c:'#2EC4B6'},{n:'Jaune',c:'#FFC93C'},{n:'Violet',c:'#9B5DE5'},{n:'Rose',c:'#FF8FA3'}];
+
+  function choice(prompt, options, correct, extra){ return Object.assign({kind:'choice', prompt, options, correct, cat:'normal'}, extra||{}); }
+
+  const BUILDERS = [
+    // intrus
+    ()=>{ const base=EMO[ri(EMO.length)]; let odd=base; while(odd===base) odd=EMO[ri(EMO.length)];
+      const opts=[base,base,base,base,base]; const pos=ri(5); opts[pos]=odd;
+      return choice('Trouve l’intrus 👀', opts, pos, {big:true}); },
+    // math +
+    ()=>{ const a=2+ri(9), b=2+ri(9); const c=a+b; const set=new Set([c]); while(set.size<4){ set.add(c + (ri(7)-3) + (ri(2)?1:-1)); } const o=shuffle([...set]); return choice(`${a} + ${b} = ?`, o.map(String), o.indexOf(c)); },
+    // pair / impair
+    ()=>{ const n=2+ri(98); return choice(`${n} c’est…`, ['Pair','Impair'], n%2===0?0:1); },
+    // couleur (Stroop léger)
+    ()=>{ const t=ri(COLORS.length); const o=shuffle(COLORS.slice()); return choice(`Tape le ${COLORS[t].n}`, o.map(c=>c.c), o.findIndex(c=>c.n===COLORS[t].n), {colormode:true}); },
+    // compter
+    ()=>{ const k=3+ri(5); const e=EMO[ri(EMO.length)]; const set=new Set([k]); while(set.size<4){ set.add(Math.max(1,k+ri(5)-2)); } const o=shuffle([...set]); return choice('Combien ?', o.map(String), o.indexOf(k), {display:e.repeat(k)}); },
+    // suite arithmétique
+    ()=>{ const s=1+ri(4), st=1+ri(4); const seq=[s,s+st,s+2*st]; const ans=s+3*st; const set=new Set([ans]); while(set.size<4){ set.add(ans+ri(7)-3); } const o=shuffle([...set]); return choice(`${seq.join('  ')}  __`, o.map(String), o.indexOf(ans)); },
+    // tape vite (mash)
+    ()=>{ const t=6+ri(5); return {kind:'tapmash', prompt:'Tape vite !', target:t, cat:'normal'}; },
+  ];
+
+  return {
+    make(allowMic){
+      if(allowMic && Math.random()<0.22) return {kind:'crie', prompt:'CRIE !!! 🎤', cat:'mic'};
+      return BUILDERS[ri(BUILDERS.length)]();
+    }
+  };
+})();
 
 /* dilemmes proposés au hasard pour "Tu préfères" (l'auteur peut aussi écrire le sien) */
 SJ.DILEMMAS = [

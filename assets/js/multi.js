@@ -13,7 +13,7 @@ SJ.room = (function(){
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
   let mPending=[], mTick=null;
-  function mClear(){ mPending.forEach(clearTimeout); mPending=[]; if(mTick){clearInterval(mTick);mTick=null;} }
+  function mClear(){ mPending.forEach(clearTimeout); mPending=[]; if(mTick){clearInterval(mTick);mTick=null;} if(pbAudioTimer){clearInterval(pbAudioTimer);pbAudioTimer=null;} if(pbRaf){cancelAnimationFrame(pbRaf);pbRaf=0;} }
   function mMount(html){ mClear(); app().innerHTML=html; app().scrollTop=0; }
   function mAfter(ms,fn){ const id=setTimeout(fn,ms); mPending.push(id); return id; }
   // affiche l'horloge (devinette) ou le compte à rebours de révélation — utilisé par hôte ET invités
@@ -31,6 +31,7 @@ SJ.room = (function(){
   let phase='lobby';
   let curKey=null, curCad=null, iValidated=false, coinsClaimed=false;
   let salonSpinning=false, salonWinner=null, lastView=null;
+  let micStream=null, pbAudioTimer=null, pbRaf=0;
 
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function randn(){ let u=0,v=0; while(!u)u=Math.random(); while(!v)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
@@ -64,6 +65,8 @@ SJ.room = (function(){
     } else if(m.t==='pick'){ if(M && phase==='guess' && M.votes[id]==null && id!==proposer().id){ M.votes[id]=m.c; hostRefresh(); checkDone(); }
     } else if(m.t==='vote'){ const p=players.find(x=>x.id===id); if(p && phase==='lobby'){ p.vote=m.g; salonWinner=null; hostRefresh(); }
     } else if(m.t==='profile'){ const p=players.find(x=>x.id===id); if(p){ p.name=(m.name||p.name).slice(0,14); p.avatar=m.avatar; p.emoji=m.emoji; p.hat=m.hat; p.hatPos=m.hatPos; p.bg=m.bg; hostRefresh(); }
+    } else if(m.t==='perm'){ if(M&&M.perms){ M.perms[id]={mic:!!m.mic,cam:!!m.cam}; hostRefresh(); }
+    } else if(m.t==='pbresp'){ if(M&&phase==='pbplay'){ M.responses[id]={choice:m.choice,ok:m.ok}; pbMaybeResolve(); }
     } else if(m.t==='leave'){ hostOnLeave(id); }
   }
   function hostOnLeave(id){
@@ -81,6 +84,7 @@ SJ.room = (function(){
   function hostStart(gameId){
     const real=players.length;
     if(real<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
+    if(gameId==='partybox'){ pbStart(); return; }
     const dur=SJ.DURATIONS.find(d=>d.id===settings.durationId)||SJ.DURATIONS[1];
     const pool=[]; (settings.packs.length?settings.packs:['classique']).forEach(id=>(SJ.THEMES[id]||[]).forEach(t=>pool.push(t)));
     players.forEach(p=>p.score=0);
@@ -155,6 +159,16 @@ SJ.room = (function(){
       };
     }
     if(M){
+      if(M.gameType==='partybox'){
+        v.gameType='partybox';
+        v.pb={ lives:M.lives, round:M.round, dur:M.dur, survived:M.survived,
+          myPerm:M.perms[forId]||{mic:false,cam:false},
+          perms:players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,isHost:p.isHost,mic:(M.perms[p.id]||{}).mic,cam:(M.perms[p.id]||{}).cam})),
+          mini:M.mini?{kind:M.mini.kind,prompt:M.mini.prompt,options:M.mini.options,colormode:M.mini.colormode,display:M.mini.display,target:M.mini.target,big:M.mini.big}:null,
+          result:phase==='pbresult'?{lifeLost:M.lifeLost,res:players.map(p=>({name:p.name,emoji:p.emoji,ok:(M.lastRes||{})[p.id]}))}:null,
+          earned:phase==='pbover'?(M.coins[forId]||0):0 };
+        return v;
+      }
       const prop=proposer(); const gs=guessers();
       v.gameType=M.gameType; v.proposerId=prop.id; v.proposerName=prop.name;
       if(phase==='podium'){
@@ -213,6 +227,7 @@ SJ.room = (function(){
       else if(type==='vote') net.send({t:'vote', g:payload.g});
       else if(type==='dilemma') net.send({t:'dilemma', a:payload.a, b:payload.b, pred:payload.pred});
       else if(type==='pick') net.send({t:'pick', c:payload.c});
+      else if(type==='pbresp') net.send({t:'pbresp', choice:payload.choice, ok:payload.ok});
       return;
     }
     // host / solo
@@ -224,6 +239,9 @@ SJ.room = (function(){
     else if(type==='guess'){ if(M){ M.guesses[myId]=clamp(payload.ratio,0,1); M.validated[myId]=true; hostRefresh(); checkDone(); } }
     else if(type==='dilemma'){ if(M){ M.dilemma={a:(payload.a||'Option A').slice(0,42), b:(payload.b||'Option B').slice(0,42)}; M.pred=clamp(Math.round(payload.pred),0,100); startGuess(); } }
     else if(type==='pick'){ if(M && phase==='guess'){ M.votes[myId]=payload.c; hostRefresh(); checkDone(); } }
+    else if(type==='pbstart'){ if(M&&M.gameType==='partybox') pbNextMini(); }
+    else if(type==='pbresp'){ if(M&&phase==='pbplay'){ M.responses[myId]=payload; pbMaybeResolve(); } }
+    else if(type==='pbagain'){ if(M&&M.gameType==='partybox'){ M.lives=3; M.round=0; M.survived=0; coinsClaimed=false; pbNextMini(); } }
     else if(type==='next'){ mClear(); nextRound(); }
     else if(type==='restart'){ hostStart(M?M.gameType:'wavelength'); }
   }
@@ -236,12 +254,16 @@ SJ.room = (function(){
     const key = `${v.phase}#${v.round||0}#${(v.proposerId&&v.proposerId===v.meId)?'P':'G'}`;
     const same = key===curKey;
     if(v.phase==='lobby'){ if(same) patchSalon(v); else { curKey=key; rLobby(v); } return; }
+    if(v.phase==='pbperm'){ curKey=key; rPbPerm(v); return; }    // re-render à chaque autorisation
     if(v.phase==='guess'){ if(same) patchGuess(v); else { curKey=key; iValidated=false; rGuess(v); } return; }
-    if(same) return;                 // propose / reveal / podium : re-render seulement au changement d'état
+    if(same) return;                 // propose / reveal / podium / pb : re-render seulement au changement d'état
     curKey=key;
     if(v.phase==='propose') rPropose(v);
     else if(v.phase==='reveal') rReveal(v);
     else if(v.phase==='podium') rPodium(v);
+    else if(v.phase==='pbplay') rPbPlay(v);
+    else if(v.phase==='pbresult') rPbResult(v);
+    else if(v.phase==='pbover') rPbOver(v);
   }
 
   // ---------- SALON (menu principal : invite + vote du jeu) ----------
@@ -573,6 +595,126 @@ SJ.room = (function(){
       </div></div></section>`);
     SJ.audio.win(); U().confetti(140);
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('restart'); };
+    $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
+  }
+
+  /* ================= PARTY BOX ================= */
+  function pbStart(){
+    players.forEach(p=>p.score=0);
+    M={ gameType:'partybox', lives:3, round:0, dur:5, mini:null, responses:{}, perms:{}, lifeLost:false, lastRes:{}, coins:{}, survived:0 };
+    players.forEach(p=>{ M.coins[p.id]=0; M.perms[p.id]={mic:false,cam:false}; });
+    coinsClaimed=false; phase='pbperm'; curKey=null; SJ.audio.pop(); hostRefresh();
+  }
+  function pbPerm(mic,cam){ if(role==='guest'){ if(net) net.send({t:'perm',mic,cam}); } else if(M&&M.perms){ M.perms[myId]={mic:!!mic,cam:!!cam}; hostRefresh(); } }
+  function pbNextMini(){
+    if(M.lives<=0){ pbGameOver(); return; }
+    M.round++; M.dur=Math.max(2.2, 5.6 - M.round*0.3);
+    const allMic=players.length>0 && players.every(p=>(M.perms[p.id]||{}).mic);
+    M.mini=SJ.PB.make(allMic); M.responses={}; M.lifeLost=false;
+    phase='pbplay'; curKey=null; hostRefresh();
+    mAfter(Math.round(M.dur*1000)+250, ()=>{ if(phase==='pbplay') pbResolve(); });
+  }
+  function pbMaybeResolve(){ if(phase!=='pbplay'||!M) return; if(players.every(p=>M.responses[p.id]!=null)) pbResolve(); }
+  function pbResolve(){
+    if(phase!=='pbplay') return; mClear();
+    const res={}; players.forEach(p=>{ const r=M.responses[p.id]; let ok=false;
+      if(M.mini.kind==='choice') ok=!!(r && r.choice===M.mini.correct); else ok=!!(r && r.ok); res[p.id]=ok; });
+    M.lastRes=res;
+    const fails=players.filter(p=>!res[p.id]).length;
+    M.lifeLost = fails >= Math.ceil(players.length/2);
+    if(M.lifeLost) M.lives--;
+    M.survived=M.round;
+    phase='pbresult'; curKey=null; hostRefresh();
+    mAfter(2400, ()=>{ if(M.lives<=0) pbGameOver(); else pbNextMini(); });
+  }
+  function pbGameOver(){ phase='pbover'; players.forEach(p=>{ M.coins[p.id]=(M.coins[p.id]||0)+M.survived*2; }); curKey=null; hostRefresh(); }
+  function pbTicks(dur){ if(pbAudioTimer) clearInterval(pbAudioTimer); const iv=Math.max(110, dur*1000/9); pbAudioTimer=setInterval(()=>SJ.audio.tick(), iv); }
+  function pbListenMic(onLoud){
+    if(!micStream) return;
+    try{ const ac=new (window.AudioContext||window.webkitAudioContext)(); const src=ac.createMediaStreamSource(micStream); const an=ac.createAnalyser(); an.fftSize=256; src.connect(an); const data=new Uint8Array(an.frequencyBinCount); let fired=false;
+      (function loop(){ an.getByteFrequencyData(data); let sum=0; for(let i=0;i<data.length;i++) sum+=data[i]; const avg=sum/data.length;
+        const bar=document.getElementById('crielvl'); if(bar) bar.style.width=Math.min(100,avg*1.8)+'%';
+        if(avg>42 && !fired){ fired=true; onLoud(); }
+        pbRaf=requestAnimationFrame(loop); })();
+    }catch(e){}
+  }
+
+  function rPbPerm(v){
+    const pb=v.pb, host=v.iAmHost, mp=pb.myPerm;
+    const allMic=pb.perms.length>0 && pb.perms.every(p=>p.mic);
+    const list=pb.perms.map(p=>`<div class="row" style="gap:10px">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},34)}<div class="grow" style="font-weight:700;font-size:17px">${esc(p.name)}${p.isHost?' 👑':''}</div><span style="font-size:17px">${p.mic?'🎤':'🔇'} ${p.cam?'📷':'·'}</span></div>`).join('');
+    mMount(`<section class="screen"><div class="stage" style="max-width:520px;gap:14px">
+      <div class="card" style="background:#6A4BD6;color:#fff;box-shadow:0 10px 0 #4A2E9E;display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:26px;font-weight:800">📦 Party Box</div>
+        <div style="font-size:15px;color:#EADBFF;font-weight:600">Plein de mini-jeux qui s'enchaînent, de plus en plus vite. <b>3 vies partagées</b> — tenez le plus longtemps possible !</div>
+      </div>
+      <div class="card sh-purple" style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:18px;font-weight:800">🎤 Autorisations</div>
+        <div class="muted" style="font-size:13px;font-weight:600">Un type de jeu n'apparaît que si <b>tout le monde</b> l'autorise.</div>
+        <div class="spread"><button class="btn ${mp.mic?'btn--teal':'btn--ghost'} grow" id="mic">🎤 Micro ${mp.mic?'✓':''}</button><button class="btn ${mp.cam?'btn--teal':'btn--ghost'} grow" id="cam">📷 Caméra ${mp.cam?'✓':''}</button></div>
+        <div class="center" style="font-size:13px;font-weight:700">${allMic?'🎤 jeux de voix débloqués ✓':'🎤 jeux de voix : il manque des micros'} · 📷 jeux caméra bientôt</div>
+      </div>
+      <div class="card sh-teal" style="display:flex;flex-direction:column;gap:9px"><div style="font-size:18px;font-weight:800">👥 Joueurs (${pb.perms.length})</div>${list}</div>
+      ${host?`<button class="btn btn--coral lg block" id="go" ${pb.perms.length<2?'disabled':''}>Démarrer la Party Box ▶</button>`:'<div class="center muted" style="font-weight:700">⏳ En attente que l\'hôte démarre…</div>'}
+      <button class="btn btn--ghost sm" id="back" style="align-self:flex-start">← quitter</button>
+    </div></section>`);
+    $('#mic').onclick=()=>{ if(!mp.mic){ if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){ navigator.mediaDevices.getUserMedia({audio:true}).then(s=>{ micStream=s; SJ.audio.click(); pbPerm(true,mp.cam); }).catch(()=>U().toast('Micro refusé 🔇')); } else U().toast('Micro indisponible'); } else { if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;} pbPerm(false,mp.cam); } };
+    $('#cam').onclick=()=>{ SJ.audio.click(); pbPerm(mp.mic,!mp.cam); };
+    $('#back').onclick=()=>{ SJ.audio.click(); quitToHome(); };
+    if(host){ const g=$('#go'); if(g) g.onclick=()=>act('pbstart'); }
+  }
+  function rPbPlay(v){
+    const pb=v.pb, m=pb.mini; if(!m) return;
+    const hearts='❤️'.repeat(Math.max(0,pb.lives))+'🖤'.repeat(Math.max(0,3-pb.lives)); const sudden=pb.lives<=1;
+    let body='';
+    if(m.kind==='choice'){
+      const opts=m.options.map((o,i)=> m.colormode
+        ? `<button class="pbopt" data-i="${i}" style="background:${o};border:3px solid #3B2D5E;border-radius:18px;height:70px;box-shadow:0 6px 0 rgba(0,0,0,.25);cursor:pointer"></button>`
+        : `<button class="pbopt" data-i="${i}" style="background:#fff;border:3px solid #3B2D5E;border-radius:18px;padding:16px;font-size:${m.big?32:22}px;font-weight:800;box-shadow:0 6px 0 #C9BBE8;cursor:pointer;font-family:inherit;color:#3B2D5E">${esc(o)}</button>`).join('');
+      body=`${m.display?`<div class="center" style="font-size:34px;letter-spacing:3px;word-break:break-word">${esc(m.display)}</div>`:''}<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${opts}</div>`;
+    } else if(m.kind==='tapmash'){
+      body=`<button id="mash" style="background:#FFC93C;border:3px solid #3B2D5E;border-radius:24px;padding:28px;font-size:28px;font-weight:800;box-shadow:0 8px 0 #D9A416;cursor:pointer;width:100%;font-family:inherit;color:#3B2D5E">TAPE ! <span id="mashn">0/${m.target}</span></button>`;
+    } else if(m.kind==='crie'){
+      body=`<div class="center" style="font-size:56px" id="crieface">😮</div><div class="center muted" style="font-weight:700">fais du bruit ! 🎤</div><div style="height:18px;border:3px solid #3B2D5E;border-radius:999px;overflow:hidden;background:#fff"><div id="crielvl" style="height:100%;width:0;background:#2EC4B6"></div></div>`;
+    }
+    mMount(`<section class="screen"><div class="stage" style="max-width:480px;gap:14px">
+      <div class="row between"><span class="pill lilac" style="font-size:15px;font-weight:800">Manche ${pb.round}</span><span style="font-size:22px">${hearts}</span></div>
+      <div style="height:14px;border:3px solid #3B2D5E;border-radius:999px;overflow:hidden;background:#fff"><div style="height:100%;width:100%;background:${sudden?'#FF5D73':'#9B5DE5'};animation:pbbar ${pb.dur}s linear forwards"></div></div>
+      <div class="card ${sudden?'sh-coral':'sh-purple'}" style="display:flex;flex-direction:column;gap:14px${sudden?';animation:shake .5s':''}">
+        <div class="center" style="font-size:26px;font-weight:800">${esc(m.prompt)}</div>${body}
+      </div>
+      ${sudden?'<div class="center" style="color:#C23A50;font-weight:800;font-size:15px">💀 SUDDEN DEATH — dernière vie !</div>':''}
+    </div></section>`);
+    let answered=false; const done=(extra)=>{ if(answered)return; answered=true; act('pbresp',extra); };
+    if(m.kind==='choice'){ app().querySelectorAll('.pbopt').forEach(b=> b.onclick=()=>{ if(answered)return; SJ.audio.pop(); app().querySelectorAll('.pbopt').forEach(x=>{ if(x!==b)x.style.opacity='.45'; }); b.style.outline='4px solid #FFC93C'; b.style.outlineOffset='2px'; done({choice:+b.dataset.i}); }); }
+    else if(m.kind==='tapmash'){ let n=0; const btn=$('#mash'), lbl=$('#mashn'); if(btn) btn.onclick=()=>{ if(answered)return; n++; if(lbl)lbl.textContent=n+'/'+m.target; SJ.audio.tick(); if(n>=m.target){ btn.style.background='#2EC4B6'; btn.style.color='#fff'; done({ok:true}); } }; }
+    else if(m.kind==='crie'){ pbListenMic(()=>{ const f=$('#crieface'); if(f)f.textContent='🤩'; SJ.audio.pop(); done({ok:true}); }); }
+    pbTicks(pb.dur);
+  }
+  function rPbResult(v){
+    const pb=v.pb, r=pb.result||{res:[],lifeLost:false};
+    const hearts='❤️'.repeat(Math.max(0,pb.lives))+'🖤'.repeat(Math.max(0,3-pb.lives));
+    mMount(`<section class="screen"><div class="stage" style="max-width:480px;gap:14px;align-items:center">
+      <div style="font-size:24px">${hearts}</div>
+      <div class="card ${r.lifeLost?'sh-coral':'sh-teal'}" style="display:flex;flex-direction:column;gap:10px;align-items:center">
+        <div style="font-size:24px;font-weight:800" class="pop">${r.lifeLost?'💔 Une vie perdue !':'✅ Bien joué !'}</div>
+        <div class="row wrap" style="justify-content:center;gap:8px">${r.res.map(x=>`<span class="score-chip" style="background:${x.ok?'#E4F8F6':'#FFE1E7'};${x.ok?'':'color:#A99CC9'}">${esc(x.emoji||'🙂')} ${esc(x.name)} ${x.ok?'✓':'✗'}</span>`).join('')}</div>
+      </div></div></section>`);
+    SJ.audio.score(r.lifeLost?0:3);
+  }
+  function rPbOver(v){
+    const pb=v.pb;
+    mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:16px;align-items:center;text-align:center">
+      <div class="card sh-coral" style="display:flex;flex-direction:column;align-items:center;gap:14px">
+        <div style="font-size:30px;font-weight:800" class="pop">💀 Game Over</div>
+        <div style="font-size:20px;font-weight:700">Vous avez survécu <b style="color:#FF5D73">${pb.survived}</b> manche${pb.survived>1?'s':''} !</div>
+        <span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${pb.earned||0} 🪙</span>
+        <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
+        ${v.iAmHost?'':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
+      </div></div></section>`);
+    SJ.audio.lose(); U().confetti(30);
+    if(!coinsClaimed){ SJ.store.addCoins(pb.earned||0); coinsClaimed=true; }
+    const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('pbagain'); };
     $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
 
