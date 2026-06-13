@@ -32,6 +32,7 @@ SJ.room = (function(){
   let curKey=null, curCad=null, iValidated=false, coinsClaimed=false;
   let salonSpinning=false, salonWinner=null, lastView=null;
   let micStream=null, pbAudioTimer=null, pbRaf=0, pbCountTimer=null;
+  let piCtx=null, piCanvas=null, piIsDrawer=false, piColor='#3B2D5E', piWidth=4, piLast=null, piBuf=[], piRaf=0, piUp=null;
   const nowMs=()=> (window.performance&&performance.now)?performance.now():Date.now();
 
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -70,6 +71,10 @@ SJ.room = (function(){
     } else if(m.t==='pbresp'){ if(M&&phase==='pbplay'){ M.responses[id]={choice:m.choice,ok:m.ok,dt:m.dt}; pbMaybeResolve(); }
     } else if(m.t==='ucclue'){ if(M&&M.gameType==='undercover') ucClueSubmit(id, m.word);
     } else if(m.t==='ucvote'){ if(M&&M.gameType==='undercover') ucVoteSubmit(id, m.target);
+    } else if(m.t==='pichoose'){ if(M&&M.gameType==='pictionary') piChoose(id, m.word);
+    } else if(m.t==='piguess'){ if(M&&M.gameType==='pictionary') piGuess(id, m.text);
+    } else if(m.t==='draw'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&id===piDrawer().id){ piApply(m.segs,m.c,m.w); players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'draw',segs:m.segs,c:m.c,w:m.w}); }); }
+    } else if(m.t==='clear'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&id===piDrawer().id){ piClearCanvas(); players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'clear'}); }); }
     } else if(m.t==='leave'){ hostOnLeave(id); }
   }
   function hostOnLeave(id){
@@ -89,6 +94,7 @@ SJ.room = (function(){
     if(real<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
     if(gameId==='partybox'){ pbStart(); return; }
     if(gameId==='bluff'){ ucStart(); return; }
+    if(gameId==='draw'||gameId==='pictionary'){ piStart(); return; }
     const dur=SJ.DURATIONS.find(d=>d.id===settings.durationId)||SJ.DURATIONS[1];
     const pool=[]; (settings.packs.length?settings.packs:['classique']).forEach(id=>(SJ.THEMES[id]||[]).forEach(t=>pool.push(t)));
     players.forEach(p=>p.score=0);
@@ -194,6 +200,15 @@ SJ.room = (function(){
           v.uc.reveal=players.map(p=>({name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,role:M.roles[p.id],word:M.words[p.id],you:(p.id===forId)})); }
         return v;
       }
+      if(M.gameType==='pictionary'){
+        v.gameType='pictionary'; const d=players[M.drawerIdx%players.length];
+        if(phase==='podium'){ v.podium={ ranking:players.slice().sort((a,b)=>b.score-a.score).map(p=>({name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,score:p.score,you:(p.id===forId)})), earned:(M.coins[forId]||0) }; return v; }
+        v.pi={ round:M.round, rounds:M.rounds, drawerId:d.id, drawerName:d.name, iAmDrawer:(d.id===forId) };
+        if(phase==='piword'){ v.pi.choices=(d.id===forId)?M.choices:null; }
+        else if(phase==='pidraw'){ v.pi.secsLeft=M.secsLeft; v.pi.wordLen=M.word?M.word.length:0; v.pi.myWord=(d.id===forId)?M.word:null; v.pi.iFound=!!M.found[forId]; v.pi.feed=M.feed.slice(-8); }
+        else if(phase==='pireveal'){ v.pi.word=M.word; v.pi.results=players.map(p=>({name:p.name,emoji:p.emoji,you:(p.id===forId),pts:(M.ptsRound[p.id]||0),found:!!M.found[p.id],drawer:(p.id===d.id)})); }
+        return v;
+      }
       const prop=proposer(); const gs=guessers();
       v.gameType=M.gameType; v.proposerId=prop.id; v.proposerName=prop.name;
       if(phase==='podium'){
@@ -241,6 +256,8 @@ SJ.room = (function(){
     if(m.t==='kicked'){ U().toast('Tu as été retiré de la partie'); quitToHome(); return; }
     if(m.t==='clk'){ showClock(m.s, !!m.rev); return; }
     if(m.t==='flash'){ flashCard(m.hi); return; }
+    if(m.t==='draw'){ if(!piIsDrawer) piApply(m.segs,m.c,m.w); return; }
+    if(m.t==='clear'){ if(!piIsDrawer) piClearCanvas(); return; }
   }
   function guestOnClose(){ U().toast('Connexion à l\'hôte perdue'); quitToHome(); }
 
@@ -255,6 +272,10 @@ SJ.room = (function(){
       else if(type==='pbresp') net.send({t:'pbresp', choice:payload.choice, ok:payload.ok, dt:payload.dt});
       else if(type==='ucclue') net.send({t:'ucclue', word:payload.word});
       else if(type==='ucvote') net.send({t:'ucvote', target:payload.target});
+      else if(type==='pichoose') net.send({t:'pichoose', word:payload.word});
+      else if(type==='draw') net.send({t:'draw', segs:payload.segs, c:payload.c, w:payload.w});
+      else if(type==='clear') net.send({t:'clear'});
+      else if(type==='piguess') net.send({t:'piguess', text:payload.text});
       return;
     }
     // host / solo
@@ -274,6 +295,11 @@ SJ.room = (function(){
     else if(type==='ucvote'){ if(M&&M.gameType==='undercover') ucVoteSubmit(myId, payload.target); }
     else if(type==='ucnext'){ if(M&&M.gameType==='undercover'&&phase==='ucreveal') ucFinishOrNext(); }
     else if(type==='ucagain'){ if(M&&M.gameType==='undercover') ucStart(); }
+    else if(type==='pichoose'){ if(M&&M.gameType==='pictionary') piChoose(myId, payload.word); }
+    else if(type==='draw'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&net) net.broadcast({t:'draw',segs:payload.segs,c:payload.c,w:payload.w}); }
+    else if(type==='clear'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&net) net.broadcast({t:'clear'}); }
+    else if(type==='piguess'){ if(M&&M.gameType==='pictionary') piGuess(myId, payload.text); }
+    else if(type==='pinext'){ if(M&&M.gameType==='pictionary'&&phase==='pireveal') piNextRound(); }
     else if(type==='next'){ mClear(); nextRound(); }
     else if(type==='restart'){ hostStart(M?M.gameType:'wavelength'); }
   }
@@ -290,6 +316,7 @@ SJ.room = (function(){
     if(v.phase==='guess'){ if(same) patchGuess(v); else { curKey=key; iValidated=false; rGuess(v); } return; }
     if(v.phase==='ucclue'){ if(same) patchUcProg(v); else { curKey=key; rUcClue(v); } return; }
     if(v.phase==='ucvote'){ if(same) patchUcProg(v); else { curKey=key; rUcVote(v); } return; }
+    if(v.phase==='pidraw'){ if(same) patchPi(v); else { curKey=key; rPiDraw(v); } return; }   // jamais de full re-render : préserve le canvas
     if(same) return;                 // propose / reveal / podium / pb : re-render seulement au changement d'état
     curKey=key;
     if(v.phase==='propose') rPropose(v);
@@ -301,6 +328,8 @@ SJ.room = (function(){
     else if(v.phase==='ucintro') rUcIntro(v);
     else if(v.phase==='ucreveal') rUcReveal(v);
     else if(v.phase==='ucover') rUcOver(v);
+    else if(v.phase==='piword') rPiWord(v);
+    else if(v.phase==='pireveal') rPiReveal(v);
   }
 
   // ---------- SALON (menu principal : invite + vote du jeu) ----------
@@ -953,6 +982,109 @@ SJ.room = (function(){
     if(!coinsClaimed){ SJ.store.addCoins(uc.earned||0); coinsClaimed=true; }
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('ucagain'); };
     $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
+  }
+
+  /* ================= DESSINE & DEVINE (PICTIONARY) ================= */
+  const piNorm=s=>String(s||'').toLowerCase().trim().normalize('NFD').replace(/[^a-z0-9]/g,'');   // NFD + strip non-alphanum => accent-insensitif
+  function piDrawer(){ return players[M.drawerIdx%players.length]; }
+  function piStart(){
+    players.forEach(p=>p.score=0);
+    M={ gameType:'pictionary', rounds:players.length, round:0, drawerIdx:-1, word:null, choices:[], found:{}, feed:[], ptsRound:{}, coins:{}, secsLeft:0, usedWords:[] };
+    players.forEach(p=>M.coins[p.id]=0);
+    coinsClaimed=false; SJ.audio.pop(); U().confetti(16); piNextRound();
+  }
+  function piPickWords(n){ let pool=SJ.PICTWORDS.filter(w=>!M.usedWords.includes(w)); if(pool.length<n) pool=SJ.PICTWORDS.slice(); const cp=pool.slice(), out=[]; for(let i=0;i<n&&cp.length;i++) out.push(cp.splice(Math.floor(Math.random()*cp.length),1)[0]); return out; }
+  function piNextRound(){
+    if(!M || M.round>=M.rounds){ goPodium(); return; }
+    M.round++; M.drawerIdx=(M.round-1)%players.length;
+    M.word=null; M.found={}; M.feed=[]; M.ptsRound={}; M.choices=piPickWords(3);
+    phase='piword'; curKey=null; hostRefresh();
+  }
+  function piChoose(id, word){ if(phase!=='piword'||!M||id!==piDrawer().id) return; if(M.choices.indexOf(word)<0) return; M.word=word; M.usedWords.push(word); piBeginDraw(); }
+  function piBeginDraw(){ phase='pidraw'; M.secsLeft=80; curKey=null; hostRefresh();
+    mTick&&clearInterval(mTick); mTick=setInterval(()=>{ if(phase!=='pidraw'){ clearInterval(mTick); mTick=null; return; } M.secsLeft--; if(M.secsLeft<=0){ clearInterval(mTick); mTick=null; piReveal(); } else hostRefresh(); },1000); }
+  function piGuess(id, text){
+    if(phase!=='pidraw'||!M||M.found[id]||id===piDrawer().id) return;
+    const pl=players.find(p=>p.id===id); const nm=pl?pl.name:'?';
+    if(piNorm(text)===piNorm(M.word)){
+      const order=Object.keys(M.found).length; M.found[id]=true; const pts=Math.max(2,6-order); M.ptsRound[id]=pts; if(pl) pl.score+=pts;
+      M.feed.push({name:nm, ok:true}); SJ.audio.coin&&SJ.audio.coin();
+      const gs=players.filter(p=>p.id!==piDrawer().id);
+      if(gs.length && gs.every(p=>M.found[p.id])) piReveal(); else hostRefresh();
+    } else { M.feed.push({name:nm, text:String(text).slice(0,24), ok:false}); if(M.feed.length>24) M.feed=M.feed.slice(-24); hostRefresh(); }
+  }
+  function piReveal(){ if(phase==='pireveal'||!M) return; mClear();
+    const d=piDrawer(); const nFound=Object.keys(M.found).length; M.ptsRound[d.id]=Math.min(6,nFound*2); d.score+=M.ptsRound[d.id];
+    players.forEach(p=>{ M.coins[p.id]=(M.coins[p.id]||0)+(M.ptsRound[p.id]||0); });
+    phase='pireveal'; curKey=null; hostRefresh();
+  }
+  function piApply(segs,c,w){ if(!piCtx||!piCanvas||!segs) return; piCtx.strokeStyle=c||'#3B2D5E'; piCtx.lineWidth=w||4; piCtx.lineCap='round'; piCtx.lineJoin='round';
+    const W=piCanvas.width,H=piCanvas.height; piCtx.beginPath(); segs.forEach(s=>{ piCtx.moveTo(s[0]*W,s[1]*H); piCtx.lineTo(s[2]*W,s[3]*H); }); piCtx.stroke(); }
+  function piClearCanvas(){ if(piCtx&&piCanvas) piCtx.clearRect(0,0,piCanvas.width,piCanvas.height); }
+  function piFeedHTML(feed){ return (feed||[]).map(f=> f.ok?`<div style="color:#1E8B81;font-weight:800">✅ ${esc(f.name)} a trouvé !</div>`:`<div><b>${esc(f.name)}</b> : ${esc(f.text)}</div>`).join('') || '<div class="muted">les réponses s\'affichent ici…</div>'; }
+  function patchPi(v){ const pi=v.pi; if(!pi) return;
+    const t=app().querySelector('#pi-timer'); if(t){ t.textContent=pi.secsLeft+'s'; t.style.background = pi.secsLeft<=10?'#FFE3E8':''; }
+    const f=app().querySelector('#pi-feed'); if(f){ f.innerHTML=piFeedHTML(pi.feed); const w=f.parentElement; if(w) w.scrollTop=w.scrollHeight; }
+    if(pi.iFound && app().querySelector('#pi-input')){ const gb=app().querySelector('#pi-guessbar'); if(gb) gb.outerHTML='<div class="center" id="pi-guessbar" style="font-size:18px;font-weight:800;color:#2EC4B6">✅ Trouvé ! attends les autres…</div>'; }
+  }
+
+  function rPiWord(v){ const pi=v.pi;
+    if(pi.iAmDrawer){
+      const btns=pi.choices.map(w=>`<button class="piword" data-w="${esc(w)}" style="border:3px solid #3B2D5E;border-radius:16px;background:#fff;padding:16px;font-size:21px;font-weight:800;box-shadow:0 6px 0 #C9BBE8;cursor:pointer;font-family:inherit;color:#3B2D5E">${esc(w)}</button>`).join('');
+      mMount(`<section class="screen"><div class="stage" style="max-width:440px;gap:14px;text-align:center">
+        ${U().topbar(`Tour ${pi.round}/${pi.rounds} — à toi de dessiner ✏️`,'frozen')}
+        <div style="font-size:19px;font-weight:800">Choisis ton mot à faire deviner</div>
+        <div class="col" style="gap:10px">${btns}</div></div></section>`);
+      app().querySelectorAll('.piword').forEach(b=> b.onclick=()=>{ SJ.audio.validate(); act('pichoose',{word:b.dataset.w}); });
+    } else {
+      mMount(`<section class="screen"><div class="stage game card sh-teal" style="max-width:420px;gap:14px;text-align:center">
+        ${U().topbar(`Tour ${pi.round}/${pi.rounds}`,'frozen')}
+        <div style="font-size:50px">✏️</div>
+        <div style="font-size:18px;font-weight:800"><b style="color:#1E8B81">${esc(pi.drawerName)}</b> choisit un mot…</div>
+        <div class="center muted" style="font-weight:700">prépare-toi à deviner 👀</div></div></section>`);
+    }
+  }
+  function rPiDraw(v){ const pi=v.pi, mine=pi.iAmDrawer, found=pi.iFound;
+    if(piUp){ window.removeEventListener('pointerup',piUp); piUp=null; }
+    const hint = mine ? `<b style="color:#1E8B81;font-size:22px;letter-spacing:2px">${esc(pi.myWord)}</b>` : `<span style="letter-spacing:7px;font-size:24px;font-weight:800">${'_ '.repeat(pi.wordLen).trim()}</span> <span class="muted" style="font-size:13px;letter-spacing:0">(${pi.wordLen} lettres)</span>`;
+    const palette=['#3B2D5E','#FF5D73','#4D96FF','#2EC4B6','#FFC93C','#FFFFFF'];
+    const tools = mine ? `<div class="row gap6 wrap" style="justify-content:center;align-items:center">${palette.map((c,i)=>`<button class="picol" data-c="${c}" style="width:30px;height:30px;border-radius:50%;border:3px solid #3B2D5E;background:${c};cursor:pointer;${i===0?'outline:3px solid #FFC93C;outline-offset:2px':''}"></button>`).join('')}<button class="btn btn--ghost sm" id="pi-clear">🗑️</button></div>` : '';
+    const bottom = mine ? '<div class="center muted" style="font-weight:700;font-size:13px">dessine — ni mots ni lettres 🤫</div>'
+      : (found ? '<div class="center" id="pi-guessbar" style="font-size:18px;font-weight:800;color:#2EC4B6">✅ Trouvé ! attends les autres…</div>'
+        : `<div class="row gap8" id="pi-guessbar"><input id="pi-input" class="field" maxlength="24" placeholder="ta réponse…" style="font-size:17px;font-weight:700"><button class="btn btn--teal" id="pi-send">Deviner</button></div>`);
+    mMount(`<section class="screen"><div class="stage" style="max-width:640px;gap:10px">
+      <div class="row between" style="align-items:center"><span class="pill lilac" style="font-weight:800">Tour ${pi.round}/${pi.rounds}</span><span style="font-weight:800;font-size:14px">${mine?'✏️ tu dessines':'✏️ '+esc(pi.drawerName)}</span><span class="pill mint" id="pi-timer" style="font-weight:800">${pi.secsLeft}s</span></div>
+      <div class="center" id="pi-word" style="font-weight:800">${hint}</div>
+      <canvas id="pi-canvas" width="600" height="420" style="width:100%;height:auto;background:#fff;border:3px solid #3B2D5E;border-radius:16px;box-shadow:0 6px 0 #C9BBE8;touch-action:none;cursor:${mine?'crosshair':'default'}"></canvas>
+      ${tools}
+      <div class="card" style="background:#fff;box-shadow:0 5px 0 #C9BBE8;padding:8px 12px;min-height:50px;max-height:104px;overflow-y:auto"><div id="pi-feed" style="display:flex;flex-direction:column;gap:3px;font-size:13px;font-weight:600">${piFeedHTML(pi.feed)}</div></div>
+      ${bottom}
+    </div></section>`);
+    piCanvas=$('#pi-canvas'); piCtx=piCanvas.getContext('2d'); piIsDrawer=mine; piColor='#3B2D5E'; piWidth=4;
+    if(mine){
+      const pt=(e)=>{ const r=piCanvas.getBoundingClientRect(); const cx=e.touches?e.touches[0].clientX:e.clientX, cy=e.touches?e.touches[0].clientY:e.clientY; return {x:(cx-r.left)/r.width, y:(cy-r.top)/r.height}; };
+      let drawing=false;
+      const flush=()=>{ piRaf=0; if(piBuf.length){ act('draw',{segs:piBuf,c:piColor,w:piWidth}); piBuf=[]; } };
+      piCanvas.addEventListener('pointerdown',(e)=>{ e.preventDefault(); drawing=true; piLast=pt(e); });
+      piCanvas.addEventListener('pointermove',(e)=>{ if(!drawing)return; e.preventDefault(); const p=pt(e); const seg=[piLast.x,piLast.y,p.x,p.y]; piApply([seg],piColor,piWidth); piBuf.push(seg); piLast=p; if(!piRaf) piRaf=requestAnimationFrame(flush); });
+      piUp=()=>{ if(drawing){ drawing=false; flush(); } }; window.addEventListener('pointerup',piUp);
+      app().querySelectorAll('.picol').forEach(b=> b.onclick=()=>{ piColor=b.dataset.c; app().querySelectorAll('.picol').forEach(x=>x.style.outline='none'); b.style.outline='3px solid #FFC93C'; b.style.outlineOffset='2px'; });
+      const cl=$('#pi-clear'); if(cl) cl.onclick=()=>{ piClearCanvas(); act('clear'); SJ.audio.click(); };
+    } else if(!found){
+      const inp=$('#pi-input'), snd=$('#pi-send');
+      const go=()=>{ const t=(inp.value||'').trim(); if(!t)return; inp.value=''; SJ.audio.click(); act('piguess',{text:t}); };
+      if(snd) snd.onclick=go; if(inp){ inp.onkeydown=(e)=>{ if(e.key==='Enter') go(); }; }
+    }
+  }
+  function rPiReveal(v){ const pi=v.pi;
+    const rows=pi.results.filter(r=>r.found||r.drawer).sort((a,b)=>b.pts-a.pts).map(r=>`<div class="row between" style="font-size:14px;font-weight:700;background:${r.you?'#FFF1C9':'#fff'};border:2px solid #3B2D5E;border-radius:10px;padding:5px 11px"><span>${r.drawer?'✏️ ':''}${r.you?'Toi':esc(r.name)}${r.found?' ✅':''}</span><b style="color:#9B5DE5">+${r.pts}</b></div>`).join('');
+    mMount(`<section class="screen"><div class="stage" style="max-width:440px;gap:13px;align-items:stretch;text-align:center">
+      <div class="card sh-teal" style="display:flex;flex-direction:column;gap:6px;align-items:center"><div style="font-size:15px;font-weight:700">Le mot était</div><div class="pop" style="font-size:32px;font-weight:800;color:#1E8B81">${esc(pi.word)}</div></div>
+      <div class="col" style="gap:6px">${rows||'<div class="muted" style="font-weight:700">personne n\'a trouvé 😅</div>'}</div>
+      ${v.iAmHost?'<button class="btn btn--purple block" id="next">Suivant ▶</button>':'<div class="center muted" style="font-weight:700">⏳ l\'hôte continue…</div>'}
+    </div></section>`);
+    if(SJ.audio.reveal) SJ.audio.reveal();
+    if(v.iAmHost){ const n=$('#next'); if(n) n.onclick=()=>{ SJ.audio.click(); act('pinext'); }; }
   }
 
   return { createHost, join, leave, act, quitToHome, _state:()=>({role,phase,players,code}) };

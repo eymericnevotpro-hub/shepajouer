@@ -121,7 +121,7 @@ SJ.PLAYER_COLORS = ['#FF5D73','#4D96FF','#2EC4B6','#FFC93C','#9B5DE5','#FF8FA3']
 /* playable:true = jouable maintenant ; les autres = « bientôt » */
 SJ.GAMES = [
   { id:'wavelength', name:"Longueur d'onde", icon:'🎯', tagline:'Vise la zone cachée du cadran. Le jeu signature.', time:'15 min', bg:'#9B5DE5', shadow:'#6E3CB0', text:'#FFFFFF', tint:'#EADBFF', rot:'-3deg', playable:true },
-  { id:'draw',  name:'Dessine & devine',  icon:'✏️', tagline:'Un joueur dessine, les autres devinent.',          time:'10 min', bg:'#2EC4B6', shadow:'#1E8B81', text:'#FFFFFF', tint:'#D7F4F0', rot:'4deg' },
+  { id:'draw',  name:'Dessine & devine',  icon:'✏️', tagline:'Choisis un mot, dessine-le, les autres devinent !',   time:'10 min', bg:'#2EC4B6', shadow:'#1E8B81', text:'#FFFFFF', tint:'#D7F4F0', rot:'4deg', playable:true },
   { id:'bluff', name:'Bluffe-moi',         icon:'🎭', tagline:'Tout le monde a un mot… sauf l’imposteur. Démasque-le !', time:'10 min', bg:'#FF8FA3', shadow:'#D45D75', text:'#3B2D5E', tint:'#FFE1E7', rot:'3deg', playable:true },
   { id:'quiz',  name:'Quiz éclair',        icon:'⚡', tagline:'Le plus rapide à buzzer rafle la mise.',            time:'8 min',  bg:'#FFC93C', shadow:'#D9A416', text:'#3B2D5E', tint:'#FFF1C9', rot:'-3deg' },
   { id:'chain', name:'Mots en chaîne',     icon:'🔗', tagline:'Rebondis de mot en mot sans casser la chaîne.',     time:'6 min',  bg:'#4D96FF', shadow:'#2F6BC4', text:'#FFFFFF', tint:'#DDEBFF', rot:'4deg' },
@@ -197,4 +197,14 @@ SJ.UNDERCOVER = [
   {civil:'Boulanger', under:'Pâtissier'},{civil:'Téléphone', under:'Tablette'},{civil:'Pirate', under:'Marin'},
   {civil:'Burger', under:'Sandwich'},  {civil:'Ski', under:'Snowboard'},     {civil:'Abeille', under:'Guêpe'},
   {civil:'Professeur', under:'Élève'}, {civil:'Citron', under:'Orange'},     {civil:'Renard', under:'Loup'},
+];
+
+/* Dessine & devine (Pictionary) : mots à faire deviner (dessinables). */
+SJ.PICTWORDS = [
+  'Soleil','Maison','Chat','Chien','Voiture','Arbre','Fleur','Poisson','Étoile','Pizza',
+  'Banane','Robot','Fusée','Ballon','Lunettes','Parapluie','Gâteau','Montagne','Avion','Bateau',
+  'Vélo','Clé','Cœur','Fantôme','Couronne','Guitare','Téléphone','Champignon','Serpent','Éléphant',
+  'Papillon','Cactus','Glace','Hamburger','Échelle','Horloge','Tortue','Dragon','Sorcière','Pingouin',
+  'Requin','Abeille','Carotte','Fraise','Parachute','Tente','Château','Pont','Ananas','Crabe',
+  'Hibou','Licorne','Volcan','Igloo','Boussole','Trésor','Squelette','Cerf-volant','Lampe','Araignée',
 ];
