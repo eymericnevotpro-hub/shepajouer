@@ -269,15 +269,15 @@ SJ.room = (function(){
   // ---------- SALON (menu principal : invite + vote du jeu) ----------
   function rLobby(v){
     const host=v.iAmHost, s=v.salon;
-    const cards = s.games.map((g,i)=>`<div data-gc="${i}" class="gcard" style="position:relative;background:${g.bg};color:${g.text};border:3px solid #3B2D5E;border-radius:22px;padding:16px;box-shadow:0 8px 0 ${g.shadow};cursor:pointer;display:flex;flex-direction:column;gap:9px;min-height:188px;${g.playable?'':'opacity:.93'}">
-        <span class="gc-ring">${gcRingHTML(g)}</span>${g.playable?'':'<span style="position:absolute;top:-9px;right:-6px;background:#3B2D5E;color:#fff;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:800;transform:rotate(6deg);z-index:1">🚧 bientôt</span>'}
-        <div class="row between" style="align-items:flex-start">
-          <div style="width:50px;height:50px;background:rgba(255,255,255,.88);border:3px solid #3B2D5E;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 4px 0 rgba(59,45,94,.35);transform:rotate(${g.rot})">${g.icon}</div>
-          <div class="col" style="align-items:flex-end;gap:5px"><span style="background:rgba(255,255,255,.88);color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">⏱ ${g.time}</span><span class="gc-lead">${gcLeadHTML(g)}</span></div>
+    const cards = s.games.map((g,i)=>`<div data-gc="${i}" class="gcard${g.playable?'':' soon'}" style="--gbg:${g.bg};--gtext:${g.text};--gshadow:${g.shadow}">
+        <span class="gc-ring">${gcRingHTML(g)}</span>${g.playable?'':'<span class="gc-soon">🚧 bientôt</span>'}
+        <div class="gc-head">
+          <div class="gc-icon" style="transform:rotate(${g.rot})">${g.icon}</div>
+          <div class="gc-meta"><span class="gc-time">⏱ ${g.time}</span><span class="gc-lead">${gcLeadHTML(g)}</span></div>
         </div>
-        <div style="font-size:20px;font-weight:800;line-height:1.05">${esc(g.name)}</div>
-        <div style="font-size:13px;font-weight:600;opacity:.92;flex:1;line-height:1.25">${esc(g.tagline)}</div>
-        <div class="row between" style="min-height:28px"><div class="gc-voters" style="padding-left:6px">${gcVotersHTML(g)}</div><span class="gc-count" style="background:#fff;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:2px 11px;font-size:14px;font-weight:800;box-shadow:0 3px 0 rgba(59,45,94,.4)">🗳 ${g.count}</span></div>
+        <div class="gc-name">${esc(g.name)}</div>
+        <div class="gc-tag">${esc(g.tagline)}</div>
+        <div class="gc-foot"><div class="gc-voters">${gcVotersHTML(g)}</div><span class="gc-count">🗳 ${g.count}</span></div>
       </div>`).join('');
     const avatarP = SJ.ui.myAvatarProfile();
     const actionsInner = host
@@ -306,16 +306,17 @@ SJ.room = (function(){
           <div class="row wrap" style="gap:20px;align-items:flex-start">
             <div class="col grow" style="flex:2.2;min-width:300px;gap:14px">
               <div class="row" style="align-items:baseline;gap:10px;flex-wrap:wrap"><h2 style="font-size:clamp(22px,4vw,32px);font-weight:800;text-shadow:0 4px 0 #FFD9B8">Votez pour un jeu&nbsp;!</h2><span class="caveat" style="font-size:19px">tape une carte 👆</span></div>
-              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(214px,1fr));gap:16px">${cards}</div>
+              <div class="games-grid">${cards}</div>
             </div>
             <div class="col" style="flex:1;min-width:270px;gap:16px">
-              <div class="card sh-teal" style="display:flex;flex-direction:column;gap:10px">
+              <div class="card sh-teal salon-players-card" style="display:flex;flex-direction:column;gap:10px">
                 <div class="row between"><div style="font-size:18px;font-weight:800">👥 Joueurs</div><span class="pill mint" style="font-size:14px"><span id="salon-pcount">${v.players.length}</span>/10</span></div>
                 <div id="salon-players" class="col" style="gap:9px">${playerListHTML(v)}</div>
               </div>
               ${settingsPanel}
               <div class="card salon-actions" style="background:#9B5DE5;color:#fff;box-shadow:0 9px 0 #4A2E9E">
-                <div class="center" style="min-height:40px;display:flex;flex-direction:column;justify-content:center"><div id="salon-stt" style="font-size:19px;font-weight:800;line-height:1.1">${esc(s.status.title)}</div><div id="salon-sts" style="font-size:13px;font-weight:600;color:#EADBFF">${esc(s.status.sub)}</div></div>
+                <div id="salon-navplayers" class="salon-navp">${navPlayersHTML(v)}</div>
+                <div class="center salon-stt-block" style="min-height:40px;display:flex;flex-direction:column;justify-content:center"><div id="salon-stt" style="font-size:19px;font-weight:800;line-height:1.1">${esc(s.status.title)}</div><div id="salon-sts" style="font-size:13px;font-weight:600;color:#EADBFF">${esc(s.status.sub)}</div></div>
                 ${actionsInner}
               </div>
             </div>
@@ -336,6 +337,11 @@ SJ.room = (function(){
       const tag=g?`<span style="font-size:12px;font-weight:700;color:#3B2D5E;background:${g.tint||'#fff'};border:2px solid #3B2D5E;border-radius:999px;padding:2px 9px;max-width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.name)}</span>`:`<span style="font-size:12px;font-weight:700;color:#A99CC9;font-style:italic">réfléchit…</span>`;
       return `<div class="row" style="gap:10px">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},34)}<div class="grow row gap6" style="min-width:0"><span style="font-size:16px;font-weight:700">${esc(p.name)}</span>${p.you?'<span class="pill paper" style="font-size:11px;padding:0 8px">toi</span>':''}${p.isHost?'<span>👑</span>':''}</div>${tag}</div>`;
     }).join(''); }
+  // bandeau compact d'avatars affiché DANS la navbar fixe sur mobile
+  function navPlayersHTML(v){
+    const avas=v.players.map(p=>`<span class="np-ava" title="${esc(p.name)}${p.isHost?' 👑':''}">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},30)}</span>`).join('');
+    return `<span class="np-count">👥 ${v.players.length}/10</span><span class="np-list">${avas}</span>`;
+  }
   function gcVotersHTML(g){ return g.voters.length
     ? `<div style="display:flex">${g.voters.map(vt=>`<span style="width:26px;height:26px;border-radius:50%;border:2px solid #3B2D5E;background:${vt.color};margin-left:-6px;display:flex;align-items:center;justify-content:center;font-size:13px">${esc(vt.emoji)}</span>`).join('')}</div>`
     : `<span style="font-size:12px;font-weight:700;opacity:.8">sois le 1er 🙌</span>`; }
@@ -351,6 +357,7 @@ SJ.room = (function(){
       const rg=card.querySelector('.gc-ring'); if(rg) rg.innerHTML=gcRingHTML(g);
     });
     const pl=app().querySelector('#salon-players'); if(pl) pl.innerHTML=playerListHTML(v);
+    const np=app().querySelector('#salon-navplayers'); if(np) np.innerHTML=navPlayersHTML(v);
     const pc=app().querySelector('#salon-pcount'); if(pc) pc.textContent=v.players.length;
     const stt=app().querySelector('#salon-stt'); if(stt) stt.textContent=s.status.title;
     const sts=app().querySelector('#salon-sts'); if(sts) sts.textContent=s.status.sub;

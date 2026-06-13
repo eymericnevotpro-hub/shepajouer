@@ -190,9 +190,27 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
 .center{text-align:center} .hidden{display:none!important}
 .spread{display:flex; gap:12px} .gap8{gap:8px} .gap6{gap:6px}
 .divider{width:3px; height:28px; background:#EDE6F7; border-radius:2px}
-/* survol des cartes (lift bouncy) */
-.gcard{transition:transform .12s ease}
-.gcard:hover{transform:translateY(-5px)}
+/* ---------- carte de jeu (salon) : composant, couleurs via vars inline ---------- */
+.games-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(214px,1fr)); gap:16px; }
+.gcard{ position:relative; background:var(--gbg); color:var(--gtext); border:3px solid var(--ink); border-radius:22px;
+  padding:16px; box-shadow:0 8px 0 var(--gshadow); cursor:pointer; display:flex; flex-direction:column; gap:9px;
+  min-height:188px; transition:transform .12s ease; }
+.gcard.soon{ opacity:.93; }
+.gcard:hover{ transform:translateY(-5px); }
+.gc-soon{ position:absolute; top:-9px; right:-6px; background:var(--ink); color:#fff; border:2px solid var(--ink);
+  border-radius:999px; padding:1px 9px; font-size:11px; font-weight:800; transform:rotate(6deg); z-index:1; }
+.gc-head{ display:flex; justify-content:space-between; align-items:flex-start; }
+.gc-icon{ width:50px; height:50px; background:rgba(255,255,255,.88); border:3px solid var(--ink); border-radius:14px;
+  display:flex; align-items:center; justify-content:center; font-size:26px; box-shadow:0 4px 0 rgba(59,45,94,.35); }
+.gc-meta{ display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
+.gc-time{ background:rgba(255,255,255,.88); color:var(--ink); border:2px solid var(--ink); border-radius:999px;
+  padding:1px 9px; font-size:12px; font-weight:800; white-space:nowrap; }
+.gc-name{ font-size:20px; font-weight:800; line-height:1.05; }
+.gc-tag{ font-size:13px; font-weight:600; opacity:.92; flex:1; line-height:1.25; }
+.gc-foot{ display:flex; justify-content:space-between; align-items:center; min-height:28px; }
+.gc-voters{ display:flex; padding-left:6px; }
+.gc-count{ background:#fff; color:var(--ink); border:2px solid var(--ink); border-radius:999px; padding:2px 11px;
+  font-size:14px; font-weight:800; box-shadow:0 3px 0 rgba(59,45,94,.4); white-space:nowrap; }
 .shop-item:hover{transform:translateY(-3px)}
 .tmpl:hover{transform:translateY(-2px)}
 
@@ -209,6 +227,7 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
 /* ---------- salon : colonne droite (joueurs/réglages/actions) ; actions = navbar fixe en bas sur mobile ---------- */
 html{ scrollbar-gutter: stable; }            /* évite le saut quand une scrollbar apparaît/disparaît */
 .cfg-mobile{ display:none; }                 /* ⚙️ visible sur mobile uniquement */
+.salon-navp{ display:none; }                 /* bandeau joueurs dans la navbar : mobile uniquement */
 .salon-actions{ display:flex; flex-direction:column; gap:12px; }
 /* entrée SANS transform : un ancêtre transformé "contiendrait" la navbar fixe et casserait position:fixed */
 .salon-screen{ animation:screenFade .28s ease both; }
@@ -218,7 +237,29 @@ html{ scrollbar-gutter: stable; }            /* évite le saut quand une scrollb
   .salon-cfg{ display:none !important; }      /* réglages derrière ⚙️ sur mobile */
   .salon-cfg.show{ display:flex !important; }
   /* bottom = safe-area : sur iPhone à encoche la barre passe AU-DESSUS de la barre d'accueil (viewport-fit=cover) */
-  .salon-actions{ position:fixed; left:max(8px,env(safe-area-inset-left)); right:max(8px,env(safe-area-inset-right)); bottom:max(8px,env(safe-area-inset-bottom)); z-index:45; padding:10px 12px !important; gap:8px; box-shadow:0 6px 0 #4A2E9E; }
+  .salon-actions{ position:fixed; width:auto; left:max(8px,env(safe-area-inset-left)); right:max(8px,env(safe-area-inset-right)); bottom:max(8px,env(safe-area-inset-bottom)); z-index:45; padding:10px 12px !important; gap:8px; box-shadow:0 6px 0 #4A2E9E; }
   .salon-actions .sa-hint{ display:none; }    /* barre slim : on cache le sous-texte */
-  .salon-screen{ padding-bottom:calc(150px + env(safe-area-inset-bottom)) !important; }   /* place pour la navbar fixe */
+  .salon-screen{ padding-bottom:calc(196px + env(safe-area-inset-bottom)) !important; }   /* place pour la navbar fixe (joueurs + statut + boutons) */
+
+  /* cartes de jeu : 2 par ligne, compactes et carrées */
+  .games-grid{ grid-template-columns:1fr 1fr; gap:10px; }
+  .gcard{ padding:11px; min-height:0; gap:6px; border-radius:18px; box-shadow:0 6px 0 var(--gshadow); }
+  .gc-icon{ width:38px; height:38px; font-size:20px; border-radius:11px; box-shadow:0 3px 0 rgba(59,45,94,.35); }
+  .gc-time{ font-size:10px; padding:0 7px; }
+  .gc-name{ font-size:15px; }
+  .gc-tag{ font-size:11px; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .gc-count{ font-size:12px; padding:1px 8px; }
+  .gc-voters span{ width:21px !important; height:21px !important; margin-left:-6px !important; font-size:11px !important; }
+  .gc-soon{ font-size:10px; padding:0 7px; }
+
+  /* la liste détaillée passe DANS la navbar (bandeau d'avatars) → on masque la carte autonome */
+  .salon-players-card{ display:none !important; }
+  .salon-navp{ display:flex; align-items:center; gap:8px; width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .np-count{ flex:none; font-size:13px; font-weight:800; background:rgba(255,255,255,.16); border:2px solid rgba(255,255,255,.45); border-radius:999px; padding:2px 10px; color:#fff; }
+  .np-list{ display:flex; flex:none; padding-left:6px; }
+  .np-ava{ margin-left:-8px; }
+  .np-ava:first-child{ margin-left:0; }
+  /* statut compact dans la navbar */
+  .salon-actions #salon-stt{ font-size:16px; }
+  .salon-actions .salon-stt-block{ min-height:0 !important; }
 }
