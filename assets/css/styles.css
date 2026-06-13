@@ -210,6 +210,9 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
 html{ scrollbar-gutter: stable; }            /* évite le saut quand une scrollbar apparaît/disparaît */
 .cfg-mobile{ display:none; }                 /* ⚙️ visible sur mobile uniquement */
 .salon-actions{ display:flex; flex-direction:column; gap:12px; }
+/* entrée SANS transform : un ancêtre transformé "contiendrait" la navbar fixe et casserait position:fixed */
+.salon-screen{ animation:screenFade .28s ease both; }
+@keyframes screenFade{ from{opacity:0} to{opacity:1} }
 @media (max-width:560px){
   .cfg-mobile{ display:inline-flex; }
   .salon-cfg{ display:none !important; }      /* réglages derrière ⚙️ sur mobile */
