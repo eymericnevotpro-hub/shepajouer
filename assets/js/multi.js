@@ -24,35 +24,28 @@ SJ.room = (function(){
   let M=null;                     // {rounds,round,proposerIdx,theme,target,clue,guesses,validated,ptsRound,coins,pool,used}
   let phase='lobby';
   let curKey=null, curCad=null, iValidated=false, coinsClaimed=false;
-  let botCount=0;
 
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function randn(){ let u=0,v=0; while(!u)u=Math.random(); while(!v)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
-  function profile(){ return { name:(SJ.store.get('pseudo')||'Toi'), avatar:SJ.store.get('avatar'), emoji:(SJ.store.get('avatar')&&SJ.store.get('avatar').type==='emoji'?SJ.store.get('avatar').value:'⭐') }; }
+  function profile(){ const a=SJ.ui.myAvatarProfile(); return { name:(SJ.store.get('pseudo')||'Toi'), avatar:a.avatar, emoji:a.emoji, hat:a.hat, hatPos:a.hatPos, bg:a.bg }; }
   function colorAt(i){ return SJ.PLAYER_COLORS[i % SJ.PLAYER_COLORS.length]; }
 
   /* ================= HÔTE ================= */
   function createHost(){
     role='host'; myId='host'; coinsClaimed=false;
     settings = { durationId:SJ.store.get('settings').durationId, packs:SJ.store.get('settings').packs.slice() };
-    const p=profile(); players=[{ id:'host', name:p.name, avatar:p.avatar, emoji:p.emoji, color:colorAt(0), isHost:true, isBot:false, score:0 }];
-    botCount=0; phase='lobby'; M=null; curKey=null;
+    const p=profile(); players=[{ id:'host', name:p.name, avatar:p.avatar, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, bg:p.bg, color:colorAt(0), isHost:true, score:0 }];
+    phase='lobby'; M=null; curKey=null;
     code = U().code5();
     net = SJ.net.create({ onConn:hostOnConn, onMsg:hostOnMsg, onLeave:hostOnLeave });
     net.host(code, ()=>{}, (err)=>{ if(err==='id-taken'){ code=U().code5(); net.leave(); net=SJ.net.create({onConn:hostOnConn,onMsg:hostOnMsg,onLeave:hostOnLeave}); net.host(code,()=>{}); } });
     hostRefresh();
   }
-  function setBots(n){ // ajuste le nombre de bots (solo / appoint)
-    n=clamp(n,0,7); const cur=players.filter(p=>p.isBot).length;
-    if(n>cur){ for(let i=cur;i<n;i++){ const b=SJ.BOTS[i%SJ.BOTS.length]; players.push({ id:'bot'+i, name:b.name, avatar:{type:'emoji',value:b.emoji}, emoji:b.emoji, color:b.color, isHost:false, isBot:true, score:0, sigma:0.05+Math.random()*0.09 }); } }
-    else if(n<cur){ let rm=cur-n; for(let i=players.length-1;i>=0&&rm>0;i--){ if(players[i].isBot){ players.splice(i,1); rm--; } } }
-    botCount=n; hostRefresh();
-  }
   function hostOnConn(id){ /* attend le message 'join' avec le profil */ U().toast('Quelqu\'un arrive…'); }
   function hostOnMsg(id, m){
     if(m.t==='join'){
       if(!players.find(p=>p.id===id)){
-        players.push({ id, name:(m.name||'Pote').slice(0,14), avatar:m.avatar, emoji:m.emoji||'🙂', color:colorAt(players.length), isHost:false, isBot:false, score:0 });
+        players.push({ id, name:(m.name||'Pote').slice(0,14), avatar:m.avatar, emoji:m.emoji||'🙂', hat:m.hat, hatPos:m.hatPos, bg:m.bg, color:colorAt(players.length), isHost:false, score:0 });
         SJ.audio.pop(); U().toast(`${m.name||'Un·e pote'} a rejoint !`);
         hostRefresh();
       }
@@ -95,14 +88,10 @@ SJ.room = (function(){
     M.theme=pickTheme(); M.target=Math.random();   // toute la plage : peut coller le bord gauche/droit
     M.clue=''; M.guesses={}; M.validated={}; M.ptsRound={};
     phase='propose'; iValidated=false;
-    const prop=proposer();
-    if(prop.isBot){ M.clue=SJ.botClue(M.theme,M.target); mAfter(1600,()=>{ if(phase==='propose') startGuess(); }); }
     hostRefresh();
   }
   function startGuess(){
     phase='guess'; iValidated=false;
-    // bots devinent (avec un peu de retard pour le feeling)
-    guessers().forEach((p,i)=>{ if(p.isBot){ mAfter(900+i*700+Math.random()*900,()=>{ if(phase==='guess'&&M.guesses[p.id]==null){ M.guesses[p.id]=clamp(M.target+randn()*(p.sigma||0.09),0,1); M.validated[p.id]=true; hostRefresh(); checkDone(); } }); } });
     hostRefresh();
     // timer de sécurité : on révèle au bout de 45s même si tout le monde n'a pas validé
     mTick && clearInterval(mTick);
@@ -124,7 +113,7 @@ SJ.room = (function(){
   // diffuse un view par destinataire (cible cachée sauf au proposeur / à la révélation)
   function buildView(forId){
     const v={ phase, code, meId:forId, iAmHost:(forId==='host'), rounds:M?M.rounds:0, round:M?M.round:0,
-      players:players.map(p=>({id:p.id,name:p.name,avatar:p.avatar,emoji:p.emoji,color:p.color,isHost:p.isHost,isBot:p.isBot,score:p.score})),
+      players:players.map(p=>({id:p.id,name:p.name,avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg,color:p.color,isHost:p.isHost,score:p.score})),
       settings, hostName:(players[0]&&players[0].name)||'?' };
     if(M){
       const prop=proposer();
@@ -134,11 +123,11 @@ SJ.room = (function(){
       v.guessProgress={ validated:gs.filter(p=>M.guesses[p.id]!=null).length, total:gs.length };
       if(phase==='reveal'){
         v.reveal={ target:M.target,
-          needles:gs.map(p=>({id:p.id, ratio:M.guesses[p.id]==null?0.5:M.guesses[p.id], color:p.color, emoji:p.emoji, pts:M.ptsRound[p.id], you:(p.id===forId)})),
+          needles:gs.map(p=>({id:p.id, ratio:M.guesses[p.id]==null?0.5:M.guesses[p.id], color:p.color, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, pts:M.ptsRound[p.id], you:(p.id===forId)})),
           chips:players.slice().sort((a,b)=>(M.ptsRound[b.id]||0)-(M.ptsRound[a.id]||0)).map(p=>({name:p.name,emoji:p.emoji,pts:M.ptsRound[p.id]||0,you:(p.id===forId),prop:(p.id===prop.id)})) };
       }
       if(phase==='podium'){
-        v.podium={ ranking:players.slice().sort((a,b)=>b.score-a.score).map(p=>({name:p.name,emoji:p.emoji,avatar:p.avatar,score:p.score,you:(p.id===forId)})),
+        v.podium={ ranking:players.slice().sort((a,b)=>b.score-a.score).map(p=>({name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,score:p.score,you:(p.id===forId)})),
           earned:(M.coins[forId]||0) };
       }
     }
@@ -154,7 +143,7 @@ SJ.room = (function(){
     role='guest'; code=c; phase='lobby'; coinsClaimed=false; curKey=null;
     const p=profile();
     net = SJ.net.create({ onState:guestOnState, onMsg:guestOnMsg, onClose:guestOnClose });
-    net.join(c, ()=> net.send({ t:'join', name:p.name, avatar:p.avatar, emoji:p.emoji }), onFail);
+    net.join(c, ()=> net.send({ t:'join', name:p.name, avatar:p.avatar, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, bg:p.bg }), onFail);
   }
   function guestOnState(v){ phase=v.phase; renderView(v); }
   function guestOnMsg(_id,m){ if(m.t==='kicked'){ U().toast('Tu as été retiré de la partie'); quitToHome(); } }
@@ -207,8 +196,7 @@ SJ.room = (function(){
             </div>
             <div class="row wrap" style="gap:18px;align-items:stretch">
               <div class="panel paper" style="flex:1.3;min-width:240px">
-                <div class="row between"><span class="panel-label">Joueurs — <span id="pcount">${v.players.length}</span></span>
-                  ${host?`<span class="row gap6"><button class="tool" id="bmin">−</button><span style="font-size:13px;font-weight:700" class="muted">bots</span><button class="tool" id="bplus">+</button></span>`:''}</div>
+                <div class="row between"><span class="panel-label">Joueurs — <span id="pcount">${v.players.length}</span></span></div>
                 <div id="players" class="col" style="gap:10px">${playersRows(v)}</div>
               </div>
               <div class="col" style="flex:1;gap:14px;min-width:240px">
@@ -231,16 +219,14 @@ SJ.room = (function(){
     $('#copy').onclick=()=>{ const link=location.origin+location.pathname+'?code='+(v.code||''); if(navigator.clipboard) navigator.clipboard.writeText(link); U().toast('Lien copié ! 🔗'); SJ.audio.click(); };
     $('#back').onclick=()=>{ SJ.audio.click(); quitToHome(); };
     if(host){
-      $('#bplus').onclick=()=>{ setBots(players.filter(p=>p.isBot).length+1); };
-      $('#bmin').onclick=()=>{ setBots(players.filter(p=>p.isBot).length-1); };
       $('#start').onclick=()=>{ act('start'); };
       renderDurs(); renderPacks();
     }
   }
   function playersRows(v){
-    return v.players.map(p=>`<div class="row"><div class="ava x40" style="background:${p.isBot?'#E4F8F6':'#FFC93C'}">${U().avaInner(p.avatar||{type:'emoji',value:p.emoji})}</div>
+    return v.players.map(p=>`<div class="row">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},40)}
       <div class="grow" style="font-size:20px;font-weight:700">${esc(p.name)}${p.isHost?' 👑':''}</div>
-      <div style="color:#2EC4B6;font-weight:700;font-size:15px">${p.isBot?'bot':p.isHost?'hôte':'prêt !'}</div></div>`).join('');
+      <div style="color:#2EC4B6;font-weight:700;font-size:15px">${p.isHost?'hôte':'prêt !'}</div></div>`).join('');
   }
   function patchLobby(v){ const pe=$('#players'); if(pe) pe.innerHTML=playersRows(v); const pc=$('#pcount'); if(pc) pc.textContent=v.players.length;
     const st=$('#start'); if(st){ st.disabled=v.players.length<2; } }
@@ -324,7 +310,7 @@ SJ.room = (function(){
     const pod=v.podium, rk=pod.ranking, win=rk[0];
     if(!coinsClaimed){ SJ.store.addCoins(pod.earned||0); coinsClaimed=true; }
     const bar=(p,h,col,rank)=>`<div class="col" style="align-items:center;gap:6px">${rank===1?'<div style="font-size:26px">👑</div>':''}
-      <div class="ava x52" style="${rank===1?'box-shadow:0 0 0 5px #FFC93C;':''}background:#fff">${U().avaInner(p.avatar||{type:'emoji',value:p.emoji})}</div>
+      <span style="${rank===1?'border-radius:50%;box-shadow:0 0 0 5px #FFC93C;':''}display:inline-block">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},52)}</span>
       <div style="font-size:${rank===1?18:16}px;font-weight:${rank===1?800:700}">${p.you?'Toi':esc(p.name)} · ${p.score}</div>
       <div class="podium-base" style="height:${h}px;background:${col};font-size:${rank===1?30:24}px">${rank}</div></div>`;
     mMount(`<section class="screen"><div class="stage" style="max-width:600px;align-items:center;text-align:center">

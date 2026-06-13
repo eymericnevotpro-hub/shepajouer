@@ -10,7 +10,7 @@ SJ.store = (function(){
     avatar: { type:'emoji', value:'😜' },   // ou {type:'draw', value:dataURL}
     coins: 240,
     owned: ['hat-cap','nd-coral','cf-party'],
-    equipped: { hat:null, bg:null, needle:'#FF5D73', confetti:'cf-party' },
+    equipped: { hat:null, hatPos:{x:0,y:-0.72,s:0.66,r:0}, bg:null, needle:'#FF5D73', confetti:'cf-party' },
     settings: { durationId:'normale', packs:['classique'], muted:false },
   };
 

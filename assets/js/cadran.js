@@ -157,6 +157,10 @@ SJ.cadran = (function(){
           g.appendChild(el('circle', {cx:bx.toFixed(1),cy:by.toFixed(1),r:rad, fill:n.color||'#4D96FF', stroke:'#3B2D5E','stroke-width':you?3:2}));
           const tx = el('text', {x:bx.toFixed(1), y:(by+4).toFixed(1), 'font-size':you?14:11,'text-anchor':'middle','font-family':'Baloo 2'});
           tx.textContent = n.emoji||''; g.appendChild(tx);
+          if (n.hat){ const hpp=n.hatPos||{x:0,y:-0.72,s:0.66,r:0}; const hx=bx+(hpp.x||0)*rad, hy=by+(hpp.y||0)*rad, hf=(hpp.s||0.66)*rad*2;
+            const ht=el('text',{x:hx.toFixed(1),y:hy.toFixed(1),'font-size':hf.toFixed(1),'text-anchor':'middle','dominant-baseline':'central','font-family':'Baloo 2'});
+            if(hpp.r) ht.setAttribute('transform',`rotate(${hpp.r} ${hx.toFixed(1)} ${hy.toFixed(1)})`);
+            ht.textContent=n.hat; g.appendChild(ht); }
           if (you){ const lab = el('text', {x:bx.toFixed(1), y:(by-rad-6).toFixed(1), 'font-size':12,'font-weight':'bold','text-anchor':'middle', fill:'#3B2D5E','font-family':'Baloo 2'}); lab.textContent='toi'; g.appendChild(lab); }
           gReveal.appendChild(g);
           SJ.audio.score(n.pts==null?2:n.pts);

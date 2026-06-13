@@ -20,6 +20,25 @@ SJ.screens = (function(){
   function avaInner(av){ if(av && av.type==='draw') return `<img src="${esc(av.value)}" alt="">`; return esc(av && av.value ? av.value : '🙂'); }
   function youEmoji(){ const av=S.get('avatar'); return av && av.type==='emoji' ? av.value : '⭐'; }
 
+  // avatar + chapeau positionné — le rond ne coupe pas le chapeau (il peut dépasser)
+  // p = { avatar, emoji, hat (glyph), hatPos {x,y,s,r}, bg }
+  function avaBox(p, px){
+    p = p || {}; const av = p.avatar || {type:'emoji', value:p.emoji||'🙂'};
+    const base = av.type==='draw' ? `<img src="${esc(av.value)}" alt="" style="width:100%;height:100%;object-fit:cover">` : esc(av.value || p.emoji || '🙂');
+    const bg = p.bg || '#FFF8EC';
+    let hatEl = '';
+    if (p.hat){ const h = p.hatPos || {x:0,y:-0.72,s:0.66,r:0};
+      hatEl = `<span style="position:absolute;left:${(50+(h.x||0)*50)}%;top:${(50+(h.y||0)*50)}%;font-size:${((h.s||0.66)*px)}px;line-height:1;transform:translate(-50%,-50%) rotate(${h.r||0}deg);pointer-events:none">${esc(p.hat)}</span>`; }
+    return `<span style="position:relative;display:inline-block;width:${px}px;height:${px}px;flex:none;vertical-align:middle">`
+      + `<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;border:3px solid #3B2D5E;border-radius:50%;overflow:hidden;background:${bg};font-size:${Math.round(px*0.46)}px">${base}</span>`
+      + hatEl + `</span>`;
+  }
+  // profil avatar du joueur local (avatar + chapeau équipé + fond)
+  function myAvatarProfile(){
+    const eq = S.get('equipped'); const hatItem = eq.hat ? SJ.shopItem(eq.hat) : null;
+    return { avatar:S.get('avatar'), emoji:youEmoji(), hat:hatItem?hatItem.glyph:'', hatPos:eq.hatPos, bg:eq.bg||null };
+  }
+
   /* ---------- toast & confetti ---------- */
   function toast(msg){
     const t=document.createElement('div'); t.textContent=msg;
@@ -49,7 +68,7 @@ SJ.screens = (function(){
           <div class="title-xl floaty">Shepa Jouer&nbsp;!</div>
           <div class="muted" style="font-size:18px;font-weight:700;max-width:440px">Un indice, un cadran, vise juste 🎯 — jeu d'ambiance entre potes.</div>
           <div class="row" style="justify-content:center;flex-wrap:wrap">
-            <div class="ava x58" id="ava-prev">${avaInner(S.get('avatar'))}</div>
+            <span id="ava-prev">${avaBox(myAvatarProfile(),58)}</span>
             <input id="pseudo" class="field" style="width:230px" maxlength="14" placeholder="Ton pseudo…" value="${esc(pseudo)}">
             <button class="caveat" id="go-ava" style="background:none;border:none;text-decoration:underline;cursor:pointer;font-size:18px">changer de tête →</button>
           </div>
@@ -87,8 +106,10 @@ SJ.screens = (function(){
           <div class="row"><span class="badge" style="background:#FFC93C;color:#3B2D5E;box-shadow:0 3px 0 #D9A416;transform:rotate(2deg)">02</span><h2 style="font-size:24px">Dessine ta tête</h2></div>
           <div class="card sh-yellow" style="display:flex;gap:22px;flex-wrap:wrap;justify-content:center">
             <div class="col" style="gap:14px;align-items:center;flex:1;min-width:260px">
-              <div id="pad"></div>
+              <div id="pad" style="position:relative;line-height:0"></div>
               <div class="row wrap gap6" style="justify-content:center" id="tools"></div>
+              <div class="row wrap gap6" style="justify-content:center;align-items:center" id="hatbar"></div>
+              <div class="caveat" style="font-size:16px">↳ glisse le chapeau pour le placer (il peut dépasser !)</div>
             </div>
             <div class="col" style="gap:12px;width:170px;min-width:160px">
               <div style="font-size:17px;font-weight:700">Ou pars d'un modèle :</div>
@@ -118,6 +139,39 @@ SJ.screens = (function(){
       d.onclick=()=>{ pad.template(e); chosen=e; }; tg.appendChild(d); });
     const add=document.createElement('div'); add.className='tmpl'; add.style.border='2px dashed #A99CC9'; add.style.color='#A99CC9'; add.textContent='+';
     add.onclick=()=>{ const e=SJ.AVATAR.templates[5+Math.floor(Math.random()*5)]; pad.template(e); chosen=e; }; tg.appendChild(add);
+
+    // ---- placement du chapeau (glisser / taille / rotation) ----
+    const padEl=$('#pad'); let hp=Object.assign({x:0,y:-0.72,s:0.66,r:0}, S.get('equipped').hatPos||{}); let handle=null;
+    const hatGlyph=()=>{ const id=S.get('equipped').hat; const it=id?SJ.shopItem(id):null; return it?it.glyph:''; };
+    const clampN=v=>Math.max(-1.45,Math.min(1.45,v));
+    function placeHandle(){ if(!handle) return; const r=padEl.getBoundingClientRect(); const px=r.width||250;
+      handle.style.left=(50+hp.x*50)+'%'; handle.style.top=(50+hp.y*50)+'%'; handle.style.fontSize=(hp.s*px)+'px'; handle.style.transform=`translate(-50%,-50%) rotate(${hp.r}deg)`; }
+    function saveHat(){ S.equip('hatPos',{x:+hp.x.toFixed(3),y:+hp.y.toFixed(3),s:+hp.s.toFixed(3),r:hp.r}); }
+    function renderHandle(){ if(handle){handle.remove();handle=null;} const g=hatGlyph(); if(!g) return;
+      handle=document.createElement('div'); handle.textContent=g;
+      handle.style.cssText='position:absolute;cursor:grab;user-select:none;line-height:1;z-index:3;touch-action:none;filter:drop-shadow(0 2px 0 rgba(0,0,0,.18))';
+      padEl.appendChild(handle); placeHandle();
+      let drag=false;
+      handle.addEventListener('pointerdown',e=>{ e.preventDefault(); drag=true; handle.style.cursor='grabbing'; try{handle.setPointerCapture(e.pointerId);}catch(_){} SJ.audio.tick(); });
+      handle.addEventListener('pointermove',e=>{ if(!drag)return; e.preventDefault(); const r=padEl.getBoundingClientRect(); hp.x=clampN((e.clientX-r.left)/r.width*2-1); hp.y=clampN((e.clientY-r.top)/r.height*2-1); placeHandle(); });
+      handle.addEventListener('pointerup',()=>{ if(!drag)return; drag=false; handle.style.cursor='grab'; saveHat(); });
+    }
+    function renderHatBar(){ const bar=$('#hatbar'); const eqHat=S.get('equipped').hat;
+      const owned=S.get('owned').filter(id=>id.indexOf('hat-')===0);
+      let html='<span class="muted" style="font-size:14px;font-weight:700">🎩</span>';
+      html+=`<div class="tmpl" data-hat="" style="background:${eqHat?'#fff':'#FFC93C'};font-size:12px;width:auto;height:30px;padding:0 8px">aucun</div>`;
+      owned.forEach(id=>{ const it=SJ.shopItem(id); if(it) html+=`<div class="tmpl" data-hat="${id}" style="background:${eqHat===id?'#FFC93C':'#fff'};font-size:18px">${it.glyph}</div>`; });
+      html+='<span class="divider"></span><div class="tool" id="hsm">−</div><div class="tool" id="hsp">+</div><div class="tool" id="hrm">↺</div><div class="tool" id="hrp">↻</div>';
+      bar.innerHTML=html;
+      bar.querySelectorAll('[data-hat]').forEach(x=> x.onclick=()=>{ S.equip('hat', x.dataset.hat||null); SJ.audio.click(); renderHandle(); renderHatBar(); });
+      const adj=(f)=>{ f(); placeHandle(); saveHat(); SJ.audio.tick(); };
+      $('#hsm').onclick=()=>adj(()=>hp.s=Math.max(0.25,hp.s-0.06));
+      $('#hsp').onclick=()=>adj(()=>hp.s=Math.min(1.45,hp.s+0.06));
+      $('#hrm').onclick=()=>adj(()=>hp.r-=15);
+      $('#hrp').onclick=()=>adj(()=>hp.r+=15);
+    }
+    renderHandle(); renderHatBar();
+
     $('#save').onclick=()=>{ if(pad.isBlank() && chosen){ S.set('avatar',{type:'emoji',value:chosen}); }
       else if(!pad.isBlank()){ S.set('avatar',{type:'draw',value:pad.toDataURL()}); }
       else { toast('Dessine ou choisis un modèle 🎨'); return; }
@@ -134,7 +188,7 @@ SJ.screens = (function(){
         <div class="stage" style="max-width:440px;align-items:center;text-align:center;gap:18px">
           <div class="title-xl" style="font-size:40px">Rejoindre 🎈</div>
           <div class="muted" style="font-weight:700">Partie <b style="color:#FF5D73;letter-spacing:4px">${esc(code)}</b> — crée ton perso pour entrer</div>
-          <div class="ava x58" id="ava-prev">${avaInner(av)}</div>
+          <span id="ava-prev">${avaBox(myAvatarProfile(),58)}</span>
           <input id="pseudo" class="field" style="width:240px" maxlength="14" placeholder="Ton pseudo…" value="${esc(pseudo)}">
           <div class="row gap8" style="justify-content:center">
             <button class="btn btn--ghost sm" id="draw">✏️ dessiner ma tête</button>
@@ -147,7 +201,7 @@ SJ.screens = (function(){
       </section>`);
     $('#pseudo').addEventListener('input', e=> S.set('pseudo', e.target.value.trim()));
     $('#draw').onclick=()=>{ SJ.audio.click(); avatar({then:()=>joinProfile(code)}); };
-    $('#emoji').onclick=()=>{ const e=SJ.AVATAR.templates[Math.floor(Math.random()*SJ.AVATAR.templates.length)]; S.set('avatar',{type:'emoji',value:e}); $('#ava-prev').innerHTML=esc(e); SJ.audio.pop(); };
+    $('#emoji').onclick=()=>{ const e=SJ.AVATAR.templates[Math.floor(Math.random()*SJ.AVATAR.templates.length)]; S.set('avatar',{type:'emoji',value:e}); $('#ava-prev').innerHTML=avaBox(myAvatarProfile(),58); SJ.audio.pop(); };
     $('#go').onclick=()=>{ const p=(S.get('pseudo')||'').trim(); if(!p){ toast('Choisis un pseudo 😊'); $('#pseudo').focus(); return; }
       $('#status').textContent='Connexion à la partie…'; SJ.audio.pop();
       SJ.room.join(code, (err)=>{ $('#status').textContent = err==='not-found'?'😕 Aucune partie avec ce code':err==='timeout'?'⏳ Hôte introuvable — réessaie':'Connexion échouée'; SJ.audio.lose(); }); };
@@ -444,6 +498,6 @@ SJ.screens = (function(){
   function refreshCoins(){ const c=document.getElementById('coins'); if(c) c.textContent=S.get('coins'); }
 
   // helpers partagés avec multi.js
-  SJ.ui = { mount, esc, $, after, clearTimers, confetti, toast, avaInner, youEmoji, code5, topbar, startTimer };
+  SJ.ui = { mount, esc, $, after, clearTimers, confetti, toast, avaInner, avaBox, ava:avaBox, myAvatarProfile, youEmoji, code5, topbar, startTimer };
   return { home, avatar, joinProfile, shop, rules, start:home };
 })();
