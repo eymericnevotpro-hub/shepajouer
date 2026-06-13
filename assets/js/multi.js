@@ -180,7 +180,7 @@ SJ.room = (function(){
           myPerm:M.perms[forId]||{mic:false,cam:false},
           perms:players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,isHost:p.isHost,mic:(M.perms[p.id]||{}).mic,cam:(M.perms[p.id]||{}).cam})),
           board,
-          mini:M.mini?{kind:M.mini.kind,prompt:M.mini.prompt,options:M.mini.options,colormode:M.mini.colormode,display:M.mini.display,target:M.mini.target,big:M.mini.big,micTarget:M.mini.micTarget}:null,
+          mini:M.mini?{kind:M.mini.kind,prompt:M.mini.prompt,options:M.mini.options,colormode:M.mini.colormode,display:M.mini.display,target:M.mini.target,big:M.mini.big,micTarget:M.mini.micTarget,cells:M.mini.cells}:null,
           count: phase==='pbcount' ? { secs:M.countSecs, first:(M.round===0),
             results:(M.round>0)?players.filter(p=>(M.lastRes||{})[p.id]).map(p=>{ const r=M.lastRes[p.id]; return {name:p.name,emoji:p.emoji,bg:p.bg,you:(p.id===forId),ok:r.ok,gained:r.gained,fast:!!r.fast,out:(M.newlyOut||[]).indexOf(p.id)>=0,lives:(M.lives[p.id]||0)}; }):[] } : null,
           over: phase==='pbover' ? { earned:(M.coins[forId]||0), iWon:(M.winnerId===forId),
@@ -706,7 +706,7 @@ SJ.room = (function(){
     if(phase!=='pbplay') return; mClear();
     const alive=pbAlive(); const res={}; const out=[]; let fastId=null, fastDt=Infinity;
     alive.forEach(p=>{ const r=M.responses[p.id]; const dt=(r&&r.dt!=null)?r.dt:M.dur*1000; let ok=false;
-      if(M.mini.kind==='choice') ok=!!(r && r.choice===M.mini.correct); else if(M.mini.kind==='tapmash') ok=!!(r && r.tap===M.mini.target); else ok=!!(r && r.ok);
+      if(M.mini.kind==='choice'||M.mini.kind==='trapcolor') ok=!!(r && r.choice===M.mini.correct); else if(M.mini.kind==='tapmash') ok=!!(r && r.tap===M.mini.target); else ok=!!(r && r.ok);
       let gained=0;
       if(ok){ gained=pbSpeedPts(dt,M.dur); M.pts[p.id]=(M.pts[p.id]||0)+gained; if(dt<fastDt){ fastDt=dt; fastId=p.id; } }
       else { M.lives[p.id]=Math.max(0,(M.lives[p.id]||0)-1); if(M.lives[p.id]===0){ M.elim[p.id]=M.round; M.surv[p.id]=M.round; out.push(p.id); } }
@@ -812,8 +812,11 @@ SJ.room = (function(){
         : `<button class="pbopt" data-i="${i}" style="background:#fff;border:3px solid #3B2D5E;border-radius:18px;padding:16px;font-size:${m.big?32:22}px;font-weight:800;box-shadow:0 6px 0 #C9BBE8;cursor:pointer;font-family:inherit;color:#3B2D5E">${esc(o)}</button>`).join('');
       body=`${m.display?`<div class="center" style="font-size:34px;letter-spacing:3px;word-break:break-word">${esc(m.display)}</div>`:''}<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${opts}</div>`;
     } else if(m.kind==='tapmash'){
-      body=`<button id="mash" style="background:#FFC93C;border:3px solid #3B2D5E;border-radius:24px;padding:24px;font-size:26px;font-weight:800;box-shadow:0 8px 0 #D9A416;cursor:pointer;width:100%;font-family:inherit;color:#3B2D5E">TAPE ! <span id="mashn">0</span> <span style="opacity:.55">/ ${m.target}</span></button>
-        <div class="center" id="mashmsg" style="font-weight:800;font-size:14px;color:#7A6BA8;min-height:20px">tape pile <b>${m.target}</b> fois… puis stop ✋ (dépasse = raté)</div>`;
+      body=`<button id="mash" style="background:#FFC93C;border:3px solid #3B2D5E;border-radius:24px;padding:26px;font-size:28px;font-weight:800;box-shadow:0 8px 0 #D9A416;cursor:pointer;width:100%;font-family:inherit;color:#3B2D5E">👆 <span id="mashn">0</span> <span style="opacity:.55">/ ${m.target}</span></button>
+        <div class="center" id="mashmsg" style="font-weight:800;font-size:15px;min-height:20px">&nbsp;</div>`;
+    } else if(m.kind==='trapcolor'){
+      const opts=(m.cells||[]).map((cell,i)=>`<button class="pbopt" data-i="${i}" style="background:${cell.bg};border:3px solid #3B2D5E;border-radius:18px;height:66px;box-shadow:0 6px 0 rgba(0,0,0,.28);cursor:pointer;color:#fff;font-weight:800;font-size:19px;font-family:inherit;text-shadow:0 1px 3px rgba(0,0,0,.55)">${esc(cell.label)}</button>`).join('');
+      body=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${opts}</div>`;
     } else if(m.kind==='crie'){
       const tp=Math.round((m.micTarget||0.72)*100);
       body=`<div class="center" style="font-size:54px" id="crieface">😐</div><div class="center muted" style="font-weight:700">CRIE pour dépasser le repère 🎯</div>
@@ -838,12 +841,12 @@ SJ.room = (function(){
     if(!dead){
       const t0=nowMs(); let answered=false;
       const done=(extra)=>{ if(answered)return; answered=true; act('pbresp', Object.assign({dt:Math.round(nowMs()-t0)}, extra)); };
-      if(m.kind==='choice'){ app().querySelectorAll('.pbopt').forEach(b=> b.onclick=()=>{ if(answered)return; SJ.audio.pop(); app().querySelectorAll('.pbopt').forEach(x=>{ if(x!==b)x.style.opacity='.45'; }); b.style.outline='4px solid #FFC93C'; b.style.outlineOffset='2px'; done({choice:+b.dataset.i}); }); }
+      if(m.kind==='choice'||m.kind==='trapcolor'){ app().querySelectorAll('.pbopt').forEach(b=> b.onclick=()=>{ if(answered)return; SJ.audio.pop(); app().querySelectorAll('.pbopt').forEach(x=>{ if(x!==b)x.style.opacity='.45'; }); b.style.outline='4px solid #FFC93C'; b.style.outlineOffset='2px'; done({choice:+b.dataset.i}); }); }
       else if(m.kind==='tapmash'){ let n=0; const btn=$('#mash'), lbl=$('#mashn'), msg=$('#mashmsg');
         if(btn) btn.onclick=()=>{ if(answered)return; n++; if(lbl)lbl.textContent=n; const dt=Math.round(nowMs()-t0);
-          if(n<m.target){ SJ.audio.tick(); if(msg){ msg.textContent='encore…'; msg.style.color='#7A6BA8'; } act('pbresp',{tap:n,dt}); }
-          else if(n===m.target){ SJ.audio.pop(); btn.style.background='#2EC4B6'; btn.style.color='#fff'; btn.style.boxShadow='0 8px 0 #1E8B81'; if(msg){ msg.textContent='✋ PILE ! ne touche plus !'; msg.style.color='#1E8B81'; } act('pbresp',{tap:n,dt}); }
-          else { answered=true; btn.style.background='#FF5D73'; btn.style.color='#fff'; btn.style.boxShadow='0 8px 0 #C23A50'; if(msg){ msg.textContent='💥 Trop ! raté…'; msg.style.color='#C23A50'; } act('pbresp',{tap:n,dt}); } }; }
+          if(n<m.target){ SJ.audio.tick(); act('pbresp',{tap:n,dt}); }
+          else if(n===m.target){ SJ.audio.pop(); btn.style.background='#2EC4B6'; btn.style.color='#fff'; btn.style.boxShadow='0 8px 0 #1E8B81'; if(msg){ msg.textContent='✅'; msg.style.color='#1E8B81'; } act('pbresp',{tap:n,dt}); }
+          else { answered=true; btn.style.background='#FF5D73'; btn.style.color='#fff'; btn.style.boxShadow='0 8px 0 #C23A50'; if(msg){ msg.textContent='✗ trop !'; msg.style.color='#C23A50'; } act('pbresp',{tap:n,dt}); } }; }
       else if(m.kind==='crie'){ pbListenMic(m.micTarget, ()=>{ SJ.audio.pop(); done({ok:true}); }); }
     }
     pbTicks(pb.dur);

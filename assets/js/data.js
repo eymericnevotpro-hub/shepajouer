@@ -120,13 +120,15 @@ SJ.PLAYER_COLORS = ['#FF5D73','#4D96FF','#2EC4B6','#FFC93C','#9B5DE5','#FF8FA3']
 /* ---------- catalogue de jeux (Salon / menu principal) ---------- */
 /* playable:true = jouable maintenant ; les autres = « bientôt » */
 SJ.GAMES = [
+  // jouables d'abord
   { id:'wavelength', name:"Longueur d'onde", icon:'🎯', tagline:'Vise la zone cachée du cadran. Le jeu signature.', time:'15 min', bg:'#9B5DE5', shadow:'#6E3CB0', text:'#FFFFFF', tint:'#EADBFF', rot:'-3deg', playable:true },
   { id:'draw',  name:'Dessine & devine',  icon:'✏️', tagline:'Choisis un mot, dessine-le, les autres devinent !',   time:'10 min', bg:'#2EC4B6', shadow:'#1E8B81', text:'#FFFFFF', tint:'#D7F4F0', rot:'4deg', playable:true },
   { id:'bluff', name:'Bluffe-moi',         icon:'🎭', tagline:'Tout le monde a un mot… sauf l’imposteur. Démasque-le !', time:'10 min', bg:'#FF8FA3', shadow:'#D45D75', text:'#3B2D5E', tint:'#FFE1E7', rot:'3deg', playable:true },
-  { id:'quiz',  name:'Quiz éclair',        icon:'⚡', tagline:'Le plus rapide à buzzer rafle la mise.',            time:'8 min',  bg:'#FFC93C', shadow:'#D9A416', text:'#3B2D5E', tint:'#FFF1C9', rot:'-3deg' },
-  { id:'chain', name:'Mots en chaîne',     icon:'🔗', tagline:'Rebondis de mot en mot sans casser la chaîne.',     time:'6 min',  bg:'#4D96FF', shadow:'#2F6BC4', text:'#FFFFFF', tint:'#DDEBFF', rot:'4deg' },
   { id:'tupreferes', name:'Tu préfères… ?', icon:'🤔', tagline:"Parie le % qui choisira l'option A.",             time:'8 min',  bg:'#FF5D73', shadow:'#C23A50', text:'#FFFFFF', tint:'#FFE1E6', rot:'-2deg', playable:true },
   { id:'partybox',  name:'Party Box',       icon:'📦', tagline:"Plein de mini-jeux qui s'enchaînent de plus en plus vite. 3 vies !", time:'∞', bg:'#6A4BD6', shadow:'#4A2E9E', text:'#FFFFFF', tint:'#EADBFF', rot:'2deg', playable:true },
+  // « bientôt » en dernier (grisés)
+  { id:'quiz',  name:'Quiz éclair',        icon:'⚡', tagline:'Le plus rapide à buzzer rafle la mise.',            time:'8 min',  bg:'#FFC93C', shadow:'#D9A416', text:'#3B2D5E', tint:'#FFF1C9', rot:'-3deg' },
+  { id:'chain', name:'Mots en chaîne',     icon:'🔗', tagline:'Rebondis de mot en mot sans casser la chaîne.',     time:'6 min',  bg:'#4D96FF', shadow:'#2F6BC4', text:'#FFFFFF', tint:'#DDEBFF', rot:'4deg' },
 ];
 
 /* ============================================================
@@ -153,7 +155,11 @@ SJ.PB = (function(){
     { key:'couleur', fn:()=>{ const t=ri(COLORS.length); const o=shuffle(COLORS.slice()); return choice(`Tape le ${COLORS[t].n}`, o.map(c=>c.c), o.findIndex(c=>c.n===COLORS[t].n), {colormode:true}); } },
     { key:'compter', fn:()=>{ const k=3+ri(5); const e=EMO[ri(EMO.length)]; const set=new Set([k]); while(set.size<4){ set.add(Math.max(1,k+ri(5)-2)); } const o=shuffle([...set]); return choice('Combien ?', o.map(String), o.indexOf(k), {display:e.repeat(k)}); } },
     { key:'suite', fn:()=>{ const s=1+ri(4), st=1+ri(4); const seq=[s,s+st,s+2*st]; const ans=s+3*st; const set=new Set([ans]); while(set.size<4){ set.add(ans+ri(7)-3); } const o=shuffle([...set]); return choice(`${seq.join('  ')}  __`, o.map(String), o.indexOf(ans)); } },
-    { key:'mash', fn:()=>{ const t=5+ri(5); return {kind:'tapmash', prompt:'Tape le nombre PILE !', target:t, cat:'normal'}; } },
+    { key:'mash', fn:()=>{ const t=5+ri(5); return {kind:'tapmash', prompt:'Tape '+t+' fois !', target:t, cat:'normal'}; } },
+    // PIÈGE Stroop : clique le bouton de la bonne COULEUR (le texte blanc ment !)
+    { key:'trapcolor', fn:()=>{ const cols=shuffle(COLORS.slice()).slice(0,4); const tIdx=ri(4); const target=cols[tIdx];
+      const cells=cols.map((c,i)=>({bg:c.c, label:cols[(i+1)%4].n}));   // chaque texte = une AUTRE couleur que le fond
+      return {kind:'trapcolor', prompt:`Clique le bouton ${target.n.toUpperCase()}`, cells, correct:tIdx, cat:'trap', trap:true}; } },
   ];
 
   return {
