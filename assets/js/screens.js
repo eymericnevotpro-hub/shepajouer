@@ -123,6 +123,9 @@ SJ.screens = (function(){
       </section>`);
     const pad = SJ.avatar.makePad({size:250});
     $('#pad').appendChild(pad.canvas);
+    // si on revient modifier un avatar DÉJÀ dessiné, on le recharge sur le pad
+    const savedAv = S.get('avatar');
+    if(savedAv && savedAv.type==='draw' && savedAv.value){ pad.loadDataURL(savedAv.value); }
     // outils : couleurs + tailles + undo
     const tools=$('#tools');
     SJ.AVATAR.palette.forEach((c,i)=>{ const d=document.createElement('div'); d.className='swatch'+(i===0?' active':''); d.style.background=c; d.title=c;

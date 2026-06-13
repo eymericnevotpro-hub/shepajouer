@@ -22,6 +22,11 @@ SJ.avatar = (function(){
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = '#FFF8EC'; ctx.fillRect(0,0,size,size);
       for (const s of strokes){
+        if (s.type === 'image'){
+          ctx.globalCompositeOperation = 'source-over';
+          if (s.img && s.img.complete) ctx.drawImage(s.img, 0, 0, size, size);
+          continue;
+        }
         if (s.type === 'emoji'){
           ctx.globalCompositeOperation = 'source-over';
           ctx.font = `${size*0.6}px "Apple Color Emoji","Segoe UI Emoji",serif`;
@@ -60,6 +65,8 @@ SJ.avatar = (function(){
       undo(){ strokes.pop(); redraw(); SJ.audio.click(); },
       clear(){ strokes = []; redraw(); },
       template(ch){ strokes = [{type:'emoji', ch}]; redraw(); SJ.audio.pop(); },
+      // recharge un dessin sauvegardé (PNG) comme calque de base pour pouvoir le modifier
+      loadDataURL(url){ if(!url) return; const img = new Image(); const st = {type:'image', img}; strokes.unshift(st); img.onload = redraw; img.src = url; },
       isBlank(){ return strokes.length === 0; },
       toDataURL(){ return cv.toDataURL('image/png'); },
     };
