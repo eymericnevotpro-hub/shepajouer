@@ -226,16 +226,26 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
 
 /* ---------- salon : colonne droite (joueurs/réglages/actions) ; actions = navbar fixe en bas sur mobile ---------- */
 html{ scrollbar-gutter: stable; }            /* évite le saut quand une scrollbar apparaît/disparaît */
-.cfg-mobile{ display:none; }                 /* ⚙️ visible sur mobile uniquement */
+.cfg-mobile{ display:none; }                 /* bouton "Réglages" visible sur mobile uniquement */
 .salon-navp{ display:none; }                 /* bandeau joueurs dans la navbar : mobile uniquement */
+.salon-cfg-wrap{ display:contents; }         /* PC : le panneau réglages reste dans la colonne */
+.cfg-close{ display:none; }                  /* ✕ : seulement dans la modale mobile */
 .salon-actions{ display:flex; flex-direction:column; gap:12px; }
 /* entrée SANS transform : un ancêtre transformé "contiendrait" la navbar fixe et casserait position:fixed */
 .salon-screen{ animation:screenFade .28s ease both; }
 @keyframes screenFade{ from{opacity:0} to{opacity:1} }
+@keyframes cfgFade{ from{opacity:0} to{opacity:1} }
+@keyframes cfgPop{ from{opacity:0; transform:scale(.9)} to{opacity:1; transform:scale(1)} }
 @media (max-width:560px){
   .cfg-mobile{ display:inline-flex; }
-  .salon-cfg{ display:none !important; }      /* réglages derrière ⚙️ sur mobile */
-  .salon-cfg.show{ display:flex !important; }
+  /* mobile : les réglages s'ouvrent en MODALE par-dessus, fond assombri */
+  .salon-cfg-wrap{ display:none; }
+  .salon-cfg-wrap.show{ display:flex; position:fixed; inset:0; z-index:60; background:rgba(28,18,52,.55);
+    align-items:center; justify-content:center; padding:18px; animation:cfgFade .16s ease; }
+  .salon-cfg-wrap.show .salon-cfg{ display:flex !important; width:100%; max-width:420px; max-height:82vh; overflow-y:auto; animation:cfgPop .22s cubic-bezier(.34,1.56,.64,1); }
+  .cfg-close{ display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; flex:none;
+    border:3px solid #3B2D5E; border-radius:50%; background:#fff; color:#3B2D5E; font-weight:800; font-size:15px;
+    font-family:inherit; cursor:pointer; box-shadow:0 3px 0 #C9BBE8; }
   /* bottom = safe-area : sur iPhone à encoche la barre passe AU-DESSUS de la barre d'accueil (viewport-fit=cover) */
   .salon-actions{ position:fixed; width:auto; left:max(8px,env(safe-area-inset-left)); right:max(8px,env(safe-area-inset-right)); bottom:max(8px,env(safe-area-inset-bottom)); z-index:45; padding:10px 12px !important; gap:8px; box-shadow:0 6px 0 #4A2E9E; }
   .salon-actions .sa-hint{ display:none; }    /* barre slim : on cache le sous-texte */

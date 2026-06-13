@@ -350,10 +350,12 @@ SJ.room = (function(){
       ? `<div class="row gap8" style="width:100%"><button class="btn btn--yellow grow" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Hasard'}</button><button class="btn btn--teal grow" id="launch" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer ▶"}</button></div>
          <div class="center sa-hint" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — min. 2 joueurs':"L'hôte lance quand vous êtes prêts"}</div>`
       : `<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ l'hôte lance la partie…</div>`;
-    const settingsPanel = host ? `<div class="card salon-cfg" style="display:flex;flex-direction:column;gap:10px;box-shadow:0 9px 0 #C9BBE8">
-        <div style="font-size:18px;font-weight:800">⚙️ Réglages <span style="font-size:13px;color:#7A6BA8;font-weight:700">· Longueur d'onde</span></div>
-        <div class="panel lilac"><div class="panel-label">Durée</div><div class="spread" id="durs"></div></div>
-        <div class="panel mint"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div>
+    const settingsPanel = host ? `<div class="salon-cfg-wrap" id="cfgwrap">
+        <div class="card salon-cfg" style="display:flex;flex-direction:column;gap:10px;box-shadow:0 9px 0 #C9BBE8">
+          <div class="row between" style="align-items:center"><div style="font-size:18px;font-weight:800">⚙️ Réglages de partie</div><button class="cfg-close" id="cfgclose" aria-label="Fermer">✕</button></div>
+          <div class="panel lilac"><div class="panel-label">Durée</div><div class="spread" id="durs"></div></div>
+          <div class="panel mint"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div>
+        </div>
       </div>` : '';
     mMount(`
       <section class="screen salon-screen" style="justify-content:flex-start;overflow:visible">
@@ -365,7 +367,7 @@ SJ.room = (function(){
               <button class="pill paper" id="copy" style="cursor:pointer;font-size:14px;font-weight:800;letter-spacing:2px">📨 ${esc(v.code||'')} ⎘</button>
               <span class="pill paper" style="font-size:14px;font-weight:800">🪙 ${SJ.store.get('coins')}</span>
               <button id="editme" style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 11px 3px 4px;cursor:pointer;box-shadow:0 4px 0 #C9BBE8;font-family:inherit;font-weight:700;font-size:14px;color:#3B2D5E">${U().ava(avatarP,28)}<span style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(SJ.store.get('pseudo')||'moi')}</span> ✏️</button>
-              ${host?`<button class="pill lilac cfg-mobile" id="cfg" style="cursor:pointer;font-size:16px">⚙️</button>`:''}
+              ${host?`<button class="pill lilac cfg-mobile" id="cfg" style="cursor:pointer;font-size:14px;font-weight:800">⚙️ Réglages de partie</button>`:''}
               <button class="btn btn--ghost sm" id="back">← quitter</button>
             </div>
           </header>
@@ -393,7 +395,10 @@ SJ.room = (function(){
     $('#copy').onclick=()=>{ const link=location.origin+location.pathname+'?code='+(v.code||''); if(navigator.clipboard) navigator.clipboard.writeText(link); U().toast('Lien copié ! 🔗'); SJ.audio.click(); };
     $('#back').onclick=()=>{ SJ.audio.click(); quitToHome(); };
     const em=$('#editme'); if(em) em.onclick=()=>{ SJ.audio.click(); SJ.screens.avatar({then: reenterSalon}); };
-    if(host){ const cf=$('#cfg'); if(cf) cf.onclick=()=>{ SJ.audio.click(); const p=app().querySelector('.salon-cfg'); if(p) p.classList.toggle('show'); };
+    if(host){ const wrap=$('#cfgwrap'); const closeCfg=()=>{ if(wrap) wrap.classList.remove('show'); };
+      const cf=$('#cfg'); if(cf) cf.onclick=()=>{ SJ.audio.click(); if(wrap) wrap.classList.add('show'); };
+      const cc=$('#cfgclose'); if(cc) cc.onclick=()=>{ SJ.audio.click(); closeCfg(); };
+      if(wrap) wrap.onclick=(e)=>{ if(e.target===wrap){ SJ.audio.click(); closeCfg(); } };   // clic sur le fond assombri = fermer
       const rb=$('#rand'); if(rb) rb.onclick=()=>act('spin');
       const lb=$('#launch'); if(lb) lb.onclick=()=>act('launch');
       renderDurs(); renderPacks(); }
