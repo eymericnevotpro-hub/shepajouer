@@ -199,3 +199,15 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
   .shop-grid{grid-template-columns:repeat(2,1fr)}
   .theme-pole{font-size:18px}
 }
+
+/* ---------- salon : réglages inline (desktop) vs ⚙️ (mobile) + barre d'action fixe ---------- */
+html{ scrollbar-gutter: stable; }            /* évite le saut quand une scrollbar apparaît/disparaît */
+.cfg-mobile{ display:none; }                 /* ⚙️ visible sur mobile uniquement */
+@media (max-width:560px){
+  .cfg-mobile{ display:inline-flex; }
+  .salon-cfg{ display:none !important; }      /* réglages cachés sur mobile… */
+  .salon-cfg.show{ display:flex !important; } /* …sauf si on touche ⚙️ */
+  .salon-actions{ position:fixed; left:8px; right:8px; bottom:8px; z-index:45; padding:12px 16px !important; gap:8px !important; box-shadow:0 6px 0 #4A2E9E !important; }
+  .salon-actions .btn{ font-size:17px !important; padding:11px 14px !important; }
+  .salon-screen{ padding-bottom:200px !important; }   /* place pour la barre fixe */
+}

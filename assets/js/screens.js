@@ -172,9 +172,9 @@ SJ.screens = (function(){
     }
     renderHandle(); renderHatBar();
 
-    $('#save').onclick=()=>{ if(pad.isBlank() && chosen){ S.set('avatar',{type:'emoji',value:chosen}); }
-      else if(!pad.isBlank()){ S.set('avatar',{type:'draw',value:pad.toDataURL()}); }
-      else { toast('Dessine ou choisis un modèle 🎨'); return; }
+    $('#save').onclick=()=>{ if(!pad.isBlank()){ S.set('avatar',{type:'draw',value:pad.toDataURL()}); }
+      else if(chosen){ S.set('avatar',{type:'emoji',value:chosen}); }
+      else if(!S.get('avatar')){ toast('Dessine ou choisis un modèle 🎨'); return; }
       SJ.audio.validate(); confetti(30); done(); };
     $('#back').onclick=()=>{ SJ.audio.click(); done(); };
   }

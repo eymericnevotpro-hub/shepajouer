@@ -30,7 +30,7 @@ SJ.room = (function(){
   let M=null;                     // {rounds,round,proposerIdx,theme,target,clue,guesses,validated,ptsRound,coins,pool,used}
   let phase='lobby';
   let curKey=null, curCad=null, iValidated=false, coinsClaimed=false;
-  let salonSpinning=false, salonWinner=null;
+  let salonSpinning=false, salonWinner=null, lastView=null;
 
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function randn(){ let u=0,v=0; while(!u)u=Math.random(); while(!v)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
@@ -63,6 +63,7 @@ SJ.room = (function(){
     } else if(m.t==='dilemma'){ if(M && phase==='propose' && proposer().id===id){ M.dilemma={a:(m.a||'Option A').slice(0,42), b:(m.b||'Option B').slice(0,42)}; M.pred=clamp(Math.round(m.pred),0,100); startGuess(); }
     } else if(m.t==='pick'){ if(M && phase==='guess' && M.votes[id]==null && id!==proposer().id){ M.votes[id]=m.c; hostRefresh(); checkDone(); }
     } else if(m.t==='vote'){ const p=players.find(x=>x.id===id); if(p && phase==='lobby'){ p.vote=m.g; salonWinner=null; hostRefresh(); }
+    } else if(m.t==='profile'){ const p=players.find(x=>x.id===id); if(p){ p.name=(m.name||p.name).slice(0,14); p.avatar=m.avatar; p.emoji=m.emoji; p.hat=m.hat; p.hatPos=m.hatPos; p.bg=m.bg; hostRefresh(); }
     } else if(m.t==='leave'){ hostOnLeave(id); }
   }
   function hostOnLeave(id){
@@ -196,7 +197,7 @@ SJ.room = (function(){
     net = SJ.net.create({ onState:guestOnState, onMsg:guestOnMsg, onClose:guestOnClose });
     net.join(c, ()=> net.send({ t:'join', name:p.name, avatar:p.avatar, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, bg:p.bg }), onFail);
   }
-  function guestOnState(v){ phase=v.phase; renderView(v); }
+  function guestOnState(v){ phase=v.phase; lastView=v; renderView(v); }
   function guestOnMsg(_id,m){
     if(m.t==='kicked'){ U().toast('Tu as été retiré de la partie'); quitToHome(); return; }
     if(m.t==='clk'){ showClock(m.s, !!m.rev); return; }
@@ -234,7 +235,7 @@ SJ.room = (function(){
   function renderView(v){
     const key = `${v.phase}#${v.round||0}#${(v.proposerId&&v.proposerId===v.meId)?'P':'G'}`;
     const same = key===curKey;
-    if(v.phase==='lobby'){ if(same) patchLobby(v); else { curKey=key; rLobby(v); } return; }
+    if(v.phase==='lobby'){ if(same) patchSalon(v); else { curKey=key; rLobby(v); } return; }
     if(v.phase==='guess'){ if(same) patchGuess(v); else { curKey=key; iValidated=false; rGuess(v); } return; }
     if(same) return;                 // propose / reveal / podium : re-render seulement au changement d'état
     curKey=key;
@@ -246,49 +247,38 @@ SJ.room = (function(){
   // ---------- SALON (menu principal : invite + vote du jeu) ----------
   function rLobby(v){
     const host=v.iAmHost, s=v.salon;
-    const cards = s.games.map((g,i)=>{
-      const winRing = g.isWinner?`<div style="position:absolute;inset:-3px;border:4px solid #FFC93C;border-radius:22px;box-shadow:0 0 0 5px rgba(255,201,60,.45);pointer-events:none"></div><div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:32px" class="pop">👑</div>`:'';
-      const leadBadge = g.isLeader?`<span style="background:#FFC93C;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">👑 en tête</span>`:'';
-      const soon = g.playable?'':`<span style="position:absolute;top:-9px;right:-6px;background:#3B2D5E;color:#fff;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:800;transform:rotate(6deg);z-index:1">🚧 bientôt</span>`;
-      const voters = g.voters.length
-        ? `<div style="display:flex">${g.voters.map(vt=>`<span style="width:26px;height:26px;border-radius:50%;border:2px solid #3B2D5E;background:${vt.color};margin-left:-6px;display:flex;align-items:center;justify-content:center;font-size:13px">${esc(vt.emoji)}</span>`).join('')}</div>`
-        : `<span style="font-size:12px;font-weight:700;opacity:.8">sois le 1er 🙌</span>`;
-      return `<div data-gc="${i}" class="gcard" style="position:relative;background:${g.bg};color:${g.text};border:3px solid #3B2D5E;border-radius:22px;padding:16px;box-shadow:0 8px 0 ${g.shadow};cursor:pointer;display:flex;flex-direction:column;gap:9px;min-height:188px;${g.playable?'':'opacity:.93'}">
-        ${winRing}${soon}
+    const cards = s.games.map((g,i)=>`<div data-gc="${i}" class="gcard" style="position:relative;background:${g.bg};color:${g.text};border:3px solid #3B2D5E;border-radius:22px;padding:16px;box-shadow:0 8px 0 ${g.shadow};cursor:pointer;display:flex;flex-direction:column;gap:9px;min-height:188px;${g.playable?'':'opacity:.93'}">
+        <span class="gc-ring">${gcRingHTML(g)}</span>${g.playable?'':'<span style="position:absolute;top:-9px;right:-6px;background:#3B2D5E;color:#fff;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:800;transform:rotate(6deg);z-index:1">🚧 bientôt</span>'}
         <div class="row between" style="align-items:flex-start">
           <div style="width:50px;height:50px;background:rgba(255,255,255,.88);border:3px solid #3B2D5E;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 4px 0 rgba(59,45,94,.35);transform:rotate(${g.rot})">${g.icon}</div>
-          <div class="col" style="align-items:flex-end;gap:5px">
-            <span style="background:rgba(255,255,255,.88);color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">⏱ ${g.time}</span>
-            ${leadBadge}
-          </div>
+          <div class="col" style="align-items:flex-end;gap:5px"><span style="background:rgba(255,255,255,.88);color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">⏱ ${g.time}</span><span class="gc-lead">${gcLeadHTML(g)}</span></div>
         </div>
         <div style="font-size:20px;font-weight:800;line-height:1.05">${esc(g.name)}</div>
         <div style="font-size:13px;font-weight:600;opacity:.92;flex:1;line-height:1.25">${esc(g.tagline)}</div>
-        <div class="row between" style="min-height:28px">
-          <div style="padding-left:6px">${voters}</div>
-          <span style="background:#fff;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:2px 11px;font-size:14px;font-weight:800;box-shadow:0 3px 0 rgba(59,45,94,.4)">🗳 ${g.count}</span>
-        </div>
-      </div>`;
-    }).join('');
-
-    const playerList = v.players.map(p=>{
-      const g = (p.vote!=null) ? s.games[p.vote] : null;
-      const tag = g ? `<span style="font-size:12px;font-weight:700;color:#3B2D5E;background:${g.tint||'#fff'};border:2px solid #3B2D5E;border-radius:999px;padding:2px 9px;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.name)}</span>`
-                  : `<span style="font-size:12px;font-weight:700;color:#A99CC9;font-style:italic">réfléchit…</span>`;
-      return `<div class="row" style="gap:10px">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},36)}
-        <div class="grow row gap6" style="min-width:0"><span style="font-size:17px;font-weight:700">${esc(p.name)}</span>${p.you?'<span class="pill paper" style="font-size:11px;padding:0 8px">toi</span>':''}${p.isHost?'<span>👑</span>':''}</div>
-        ${tag}</div>`;
-    }).join('');
+        <div class="row between" style="min-height:28px"><div class="gc-voters" style="padding-left:6px">${gcVotersHTML(g)}</div><span class="gc-count" style="background:#fff;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:2px 11px;font-size:14px;font-weight:800;box-shadow:0 3px 0 rgba(59,45,94,.4)">🗳 ${g.count}</span></div>
+      </div>`).join('');
+    const avatarP = SJ.ui.myAvatarProfile();
+    const settingsPanel = host ? `<div class="card salon-cfg" style="display:flex;flex-direction:column;gap:10px;box-shadow:0 9px 0 #C9BBE8">
+        <div style="font-size:18px;font-weight:800">⚙️ Réglages <span style="font-size:13px;color:#7A6BA8;font-weight:700">· Longueur d'onde</span></div>
+        <div class="panel lilac"><div class="panel-label">Durée</div><div class="spread" id="durs"></div></div>
+        <div class="panel mint"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div>
+      </div>` : '';
+    const actionsInner = host
+      ? `<button class="btn btn--yellow block" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Le hasard décide'}</button>
+         <button class="btn btn--teal block" id="launch" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer la partie ▶"}</button>
+         <div class="center" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — il faut au moins 2 joueurs':"L'hôte lance quand tout le monde est prêt"}</div>`
+      : `<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ L'hôte choisit et lance la partie…</div>`;
 
     mMount(`
-      <section class="screen" style="justify-content:flex-start;overflow:visible">
+      <section class="screen salon-screen" style="justify-content:flex-start;overflow:visible">
         <div class="stage wide" style="max-width:1080px;gap:18px">
           <header class="row between wrap" style="gap:14px">
             <div class="row gap8"><div style="width:46px;height:46px;background:#FF5D73;border:3px solid #3B2D5E;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 5px 0 #C23A50;transform:rotate(-4deg)">🎲</div>
               <div class="col" style="line-height:1.05"><div style="font-size:24px;font-weight:800">Shepa Jouer</div><div style="font-size:14px;font-weight:700;color:#9B5DE5">Salon de ${esc(v.hostName)}</div></div></div>
-            <div class="row gap8">
-              <span class="pill paper" style="font-size:16px;font-weight:800">🪙 ${SJ.store.get('coins')}</span>
-              ${host?`<button class="pill lilac" id="cfg" style="cursor:pointer;font-size:15px">⚙️ réglages</button>`:''}
+            <div class="row gap8" style="align-items:center">
+              <span class="pill paper" style="font-size:15px;font-weight:800">🪙 ${SJ.store.get('coins')}</span>
+              <button id="editme" style="display:inline-flex;align-items:center;gap:7px;background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 12px 3px 4px;cursor:pointer;box-shadow:0 4px 0 #C9BBE8;font-family:inherit;font-weight:700;font-size:15px;color:#3B2D5E">${U().ava(avatarP,30)}<span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(SJ.store.get('pseudo')||'moi')}</span><span style="font-size:13px">✏️</span></button>
+              ${host?`<button class="pill lilac cfg-mobile" id="cfg" style="cursor:pointer;font-size:16px">⚙️</button>`:''}
               <button class="btn btn--ghost sm" id="back">← quitter</button>
             </div>
           </header>
@@ -298,24 +288,22 @@ SJ.room = (function(){
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(214px,1fr));gap:16px">${cards}</div>
             </div>
             <div class="col" style="flex:1;min-width:280px;gap:16px">
-              <div class="card sh-blue" style="gap:12px">
+              <div class="card sh-blue" style="display:flex;flex-direction:column;gap:12px">
                 <div style="font-size:18px;font-weight:800">📨 Invite tes amis</div>
                 <div style="border:3px dashed #3B2D5E;border-radius:14px;padding:8px 0;text-align:center;font-size:28px;font-weight:800;letter-spacing:6px;background:#F4EFFF">${esc(v.code||'')}</div>
                 <button class="btn btn--blue block" id="copy">⎘ Copier le lien</button>
               </div>
-              <div class="card sh-teal" style="gap:10px">
-                <div class="row between"><div style="font-size:18px;font-weight:800">👥 Joueurs</div><span class="pill mint" style="font-size:14px">${v.players.length}/10</span></div>
-                ${playerList}
+              ${settingsPanel}
+              <div class="card sh-teal" style="display:flex;flex-direction:column;gap:10px">
+                <div class="row between"><div style="font-size:18px;font-weight:800">👥 Joueurs</div><span class="pill mint" style="font-size:14px"><span id="salon-pcount">${v.players.length}</span>/10</span></div>
+                <div id="salon-players" class="col" style="gap:10px">${playerListHTML(v)}</div>
               </div>
-              <div class="card" style="gap:12px;background:#9B5DE5;color:#fff;box-shadow:0 9px 0 #4A2E9E">
-                <div class="center" style="min-height:44px;display:flex;flex-direction:column;justify-content:center">
-                  <div style="font-size:20px;font-weight:800;line-height:1.1">${esc(s.status.title)}</div>
-                  <div style="font-size:14px;font-weight:600;color:#EADBFF">${esc(s.status.sub)}</div>
+              <div class="card salon-actions" style="display:flex;flex-direction:column;gap:12px;background:#9B5DE5;color:#fff;box-shadow:0 9px 0 #4A2E9E">
+                <div class="center" style="min-height:42px;display:flex;flex-direction:column;justify-content:center">
+                  <div id="salon-stt" style="font-size:20px;font-weight:800;line-height:1.1">${esc(s.status.title)}</div>
+                  <div id="salon-sts" style="font-size:14px;font-weight:600;color:#EADBFF">${esc(s.status.sub)}</div>
                 </div>
-                ${host?`<button class="btn btn--yellow block" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Le hasard décide'}</button>
-                <button class="btn btn--teal block" id="launch" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer la partie ▶"}</button>
-                ${v.players.length<2?'<div class="center" style="font-size:12px;font-weight:700;color:#EADBFF">Partage le code — il faut au moins 2 joueurs</div>':'<div class="center" style="font-size:12px;font-weight:600;color:#EADBFF">L\'hôte lance quand tout le monde est prêt</div>'}`
-                :`<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ L'hôte choisit et lance la partie…</div>`}
+                ${actionsInner}
               </div>
             </div>
           </div>
@@ -324,30 +312,49 @@ SJ.room = (function(){
     app().querySelectorAll('.gcard').forEach(c=> c.onclick=()=>{ if(s.spinning) return; SJ.audio.pop(); act('vote',{g:+c.dataset.gc}); });
     $('#copy').onclick=()=>{ const link=location.origin+location.pathname+'?code='+(v.code||''); if(navigator.clipboard) navigator.clipboard.writeText(link); U().toast('Lien copié ! 🔗'); SJ.audio.click(); };
     $('#back').onclick=()=>{ SJ.audio.click(); quitToHome(); };
-    if(host){ const cf=$('#cfg'); if(cf) cf.onclick=()=>{ SJ.audio.click(); salonSettings(); };
+    const em=$('#editme'); if(em) em.onclick=()=>{ SJ.audio.click(); SJ.screens.avatar({then: reenterSalon}); };
+    if(host){ const cf=$('#cfg'); if(cf) cf.onclick=()=>{ SJ.audio.click(); const p=app().querySelector('.salon-cfg'); if(p) p.classList.toggle('show'); };
       const rb=$('#rand'); if(rb) rb.onclick=()=>act('spin');
-      const lb=$('#launch'); if(lb) lb.onclick=()=>act('launch'); }
+      const lb=$('#launch'); if(lb) lb.onclick=()=>act('launch');
+      renderDurs(); renderPacks(); }
   }
-  function patchLobby(v){ rLobby(v); }   // le salon se re-rend entièrement (aucun input en cours)
+  function gcVotersHTML(g){ return g.voters.length
+    ? `<div style="display:flex">${g.voters.map(vt=>`<span style="width:26px;height:26px;border-radius:50%;border:2px solid #3B2D5E;background:${vt.color};margin-left:-6px;display:flex;align-items:center;justify-content:center;font-size:13px">${esc(vt.emoji)}</span>`).join('')}</div>`
+    : `<span style="font-size:12px;font-weight:700;opacity:.8">sois le 1er 🙌</span>`; }
+  function gcLeadHTML(g){ return g.isLeader?`<span style="background:#FFC93C;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">👑 en tête</span>`:''; }
+  function gcRingHTML(g){ return g.isWinner?`<div style="position:absolute;inset:-3px;border:4px solid #FFC93C;border-radius:22px;box-shadow:0 0 0 5px rgba(255,201,60,.45);pointer-events:none"></div><div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:32px" class="pop">👑</div>`:''; }
+  function playerListHTML(v){ const s=v.salon; return v.players.map(p=>{
+      const g=(p.vote!=null)?s.games[p.vote]:null;
+      const tag=g?`<span style="font-size:12px;font-weight:700;color:#3B2D5E;background:${g.tint||'#fff'};border:2px solid #3B2D5E;border-radius:999px;padding:2px 9px;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.name)}</span>`:`<span style="font-size:12px;font-weight:700;color:#A99CC9;font-style:italic">réfléchit…</span>`;
+      return `<div class="row" style="gap:10px">${U().ava({avatar:p.avatar,emoji:p.emoji,hat:p.hat,hatPos:p.hatPos,bg:p.bg},36)}<div class="grow row gap6" style="min-width:0"><span style="font-size:17px;font-weight:700">${esc(p.name)}</span>${p.you?'<span class="pill paper" style="font-size:11px;padding:0 8px">toi</span>':''}${p.isHost?'<span>👑</span>':''}</div>${tag}</div>`;
+    }).join(''); }
+  function patchSalon(v){
+    const s=v.salon; if(!s) return;
+    s.games.forEach((g,i)=>{ const card=app().querySelector('.gcard[data-gc="'+i+'"]'); if(!card) return;
+      card.style.outline='none';
+      const c=card.querySelector('.gc-count'); if(c) c.textContent='🗳 '+g.count;
+      const vo=card.querySelector('.gc-voters'); if(vo) vo.innerHTML=gcVotersHTML(g);
+      const ld=card.querySelector('.gc-lead'); if(ld) ld.innerHTML=gcLeadHTML(g);
+      const rg=card.querySelector('.gc-ring'); if(rg) rg.innerHTML=gcRingHTML(g);
+    });
+    const pl=app().querySelector('#salon-players'); if(pl) pl.innerHTML=playerListHTML(v);
+    const pc=app().querySelector('#salon-pcount'); if(pc) pc.textContent=v.players.length;
+    const stt=app().querySelector('#salon-stt'); if(stt) stt.textContent=s.status.title;
+    const sts=app().querySelector('#salon-sts'); if(sts) sts.textContent=s.status.sub;
+    const lb=app().querySelector('#launch'); if(lb){ lb.disabled=v.players.length<2; lb.textContent=(s.winner!=null?"C'est parti ▶":"Lancer la partie ▶"); }
+    const rb=app().querySelector('#rand'); if(rb) rb.textContent=s.spinning?'🌀 Tirage…':'🎲 Le hasard décide';
+  }
+  function reenterSalon(){
+    const p=profile(); curKey=null;
+    if(role==='host'){ const me=players.find(x=>x.id===myId); if(me){ me.name=p.name; me.avatar=p.avatar; me.emoji=p.emoji; me.hat=p.hat; me.hatPos=p.hatPos; me.bg=p.bg; } hostRefresh(); }
+    else { if(net) net.send({t:'profile', name:p.name, avatar:p.avatar, emoji:p.emoji, hat:p.hat, hatPos:p.hatPos, bg:p.bg}); if(lastView) renderView(lastView); }
+  }
   function flashCard(hi){ app().querySelectorAll('.gcard').forEach(c=>{ c.style.outline=(+c.dataset.gc===hi)?'4px solid #FFC93C':'none'; c.style.outlineOffset='3px'; }); }
   function salonStatusObj(counts, lead, any){
     if(salonSpinning) return {title:'Le sort en décide…', sub:'ça tourne, ça tourne…'};
     if(salonWinner!=null){ const g=SJ.GAMES[salonWinner]; return {title:`${g.icon} ${g.name} !`, sub:'Tout le monde embarque 🎉'}; }
     if(any){ const g=SJ.GAMES[lead]; return {title:g.name, sub:`${counts[lead]} voix en tête`}; }
     return {title:'En attente des votes', sub:'Tape un jeu pour voter'};
-  }
-  function salonSettings(){
-    const o=document.createElement('div');
-    o.style.cssText='position:fixed;inset:0;background:rgba(59,45,94,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px;animation:popIn .25s both';
-    o.innerHTML=`<div class="card sh-purple" style="max-width:420px;background:#fff;display:flex;flex-direction:column;gap:14px">
-      <h2 style="font-size:22px">⚙️ Réglages — Longueur d'onde</h2>
-      <div class="panel lilac"><div class="panel-label">Durée de la partie</div><div class="spread" id="durs"></div></div>
-      <div class="panel mint"><div class="panel-label">Thèmes</div><div class="row wrap gap8" id="packs"></div></div>
-      <button class="btn btn--purple block" id="ok">OK</button></div>`;
-    document.body.appendChild(o);
-    renderDurs(); renderPacks();
-    o.querySelector('#ok').onclick=()=>{ SJ.audio.pop(); o.remove(); };
-    o.onclick=e=>{ if(e.target===o) o.remove(); };
   }
   function startSpin(){
     if(salonSpinning) return; salonSpinning=true; salonWinner=null; hostRefresh();
