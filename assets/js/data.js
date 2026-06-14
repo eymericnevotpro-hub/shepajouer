@@ -238,7 +238,7 @@ SJ.BOMBSYL = [
   {s:'TION', hints:['NATION','POTION','STATION']},{s:'POI', hints:['POISSON','POIRE','POING']},
 ];
 
-/* Solo ! (jeu de cartes type UNO) — helpers de cartes (porté du handoff Solo.dc.html). Pas de pioche finie : cartes générées au hasard. */
+/* Uno ! (jeu de cartes) — VRAIES règles : paquet fini de 108 cartes, pioche/défausse. */
 SJ.SOLO = (function(){
   const COLORS=['R','B','G','Y'];
   const CMAP={
@@ -248,17 +248,16 @@ SJ.SOLO = (function(){
     Y:{bg:'#FFC93C', sh:'#D9A416', corner:'#3B2D5E', name:'Jaune', ink:'#D9A416'},
     W:{bg:'conic-gradient(#FF5D73 0deg 90deg,#FFC93C 90deg 180deg,#2EC4B6 180deg 270deg,#4D96FF 270deg 360deg)', sh:'#1F1638', corner:'#FFFFFF', name:'Joker', ink:'#3B2D5E'}
   };
-  const ri=n=>Math.floor(Math.random()*n);
   function sym(val){ return val==='skip'?'⊘':val==='rev'?'⇄':val==='wild'?'★':val; }
   function label(card){ return CMAP[card.color].name+' '+sym(card.val); }
-  function randCard(){ const r=Math.random(); if(r<0.07) return {color:'W', val:Math.random()<0.5?'wild':'+4'};
-    const c=COLORS[ri(4)]; const rr=Math.random();
-    if(rr<0.12) return {color:c, val:'skip'}; if(rr<0.20) return {color:c, val:'+2'}; if(rr<0.26) return {color:c, val:'rev'};
-    return {color:c, val:String(ri(10))}; }
-  function startCard(){ let t; do{ t=randCard(); } while(t.color==='W' || ['skip','rev','+2','+4'].indexOf(t.val)>=0); return t; }   // 1re carte = un simple chiffre
-  function aiCard(activeColor){ const r=Math.random();
-    if(r<0.10) return {color:activeColor, val:'skip'}; if(r<0.18) return {color:activeColor, val:'+2'};
-    if(r<0.24) return {color:activeColor, val:'rev'}; if(r<0.29) return {color:'W', val:Math.random()<0.5?'wild':'+4'};
-    return {color:activeColor, val:String(ri(10))}; }
-  return { COLORS, CMAP, sym, label, randCard, startCard, aiCard };
+  // paquet officiel : par couleur 1×0, 2× 1-9, 2× skip/rev/+2 ; + 4 jokers + 4 jokers +4 = 108
+  function makeDeck(){ const d=[]; COLORS.forEach(c=>{ d.push({color:c,val:'0'});
+    for(let v=1;v<=9;v++){ d.push({color:c,val:String(v)}); d.push({color:c,val:String(v)}); }
+    for(let k=0;k<2;k++){ d.push({color:c,val:'skip'}); d.push({color:c,val:'rev'}); d.push({color:c,val:'+2'}); } });
+    for(let k=0;k<4;k++){ d.push({color:'W',val:'wild'}); d.push({color:'W',val:'+4'}); } return d; }
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  function playable(card, activeColor, top){ return card.color==='W' || card.color===activeColor || card.val===top.val; }
+  // couleur la plus présente dans une main (pour l'IA qui pose un joker)
+  function bestColor(hand){ const c={R:0,B:0,G:0,Y:0}; hand.forEach(k=>{ if(c[k.color]!=null) c[k.color]++; }); let best='R'; COLORS.forEach(k=>{ if(c[k]>c[best]) best=k; }); return best; }
+  return { COLORS, CMAP, sym, label, makeDeck, shuffle, playable, bestColor };
 })();

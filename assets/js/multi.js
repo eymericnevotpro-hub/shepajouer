@@ -79,6 +79,7 @@ SJ.room = (function(){
     } else if(m.t==='clear'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&id===piDrawer().id){ piClearCanvas(); players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'clear'}); }); }
     } else if(m.t==='soloplay'){ if(M&&M.gameType==='solo') soloPlay(id, m.i);
     } else if(m.t==='solodraw'){ if(M&&M.gameType==='solo') soloDraw(id);
+    } else if(m.t==='solopass'){ if(M&&M.gameType==='solo') soloPass(id);
     } else if(m.t==='solocolor'){ if(M&&M.gameType==='solo') soloChooseColor(id, m.c);
     } else if(m.t==='solosolo'){ if(M&&M.gameType==='solo') soloCallSolo(id);
     } else if(m.t==='ttword'){ if(M&&M.gameType==='tictacmot') ttSubmit(id, m.word);
@@ -243,6 +244,8 @@ SJ.room = (function(){
         v.solo={ round:M.round, dir:M.dir, activeColorHex:cm[M.activeColor].bg, message:M.message,
           top:{ bg:cm[M.top.color].bg, ink:cm[M.top.color].ink, corner:cm[M.top.color].corner, sym:SJ.SOLO.sym(M.top.val) },
           myTurn:(M.turn===mySeat && !M.needColor && M.winnerSeat<0),
+          drawEnabled:(M.turn===mySeat && !M.needColor && M.winnerSeat<0 && M.drawn==null),
+          canPass:(M.drawn!=null && M.turn===mySeat && !M.needColor && M.winnerSeat<0),
           needColor:(M.needColor && M.needColorSeat===mySeat),
           ring:M.seats.map((sp,i)=>{ const rel=((i-posSeat)%N+N)%N; const ang=(90+rel*(360/N))*Math.PI/180; const R=42; const cnt=soloCount(i);
             return { name:sp.name, emoji:sp.emoji, avatar:sp.avatar, hat:sp.hat, hatPos:sp.hatPos, bg:sp.bg||sp.color, bot:sp.bot,
@@ -332,6 +335,7 @@ SJ.room = (function(){
       else if(type==='ttinput') net.send({t:'ttinput', text:payload.text});
       else if(type==='soloplay') net.send({t:'soloplay', i:payload.i});
       else if(type==='solodraw') net.send({t:'solodraw'});
+      else if(type==='solopass') net.send({t:'solopass'});
       else if(type==='solocolor') net.send({t:'solocolor', c:payload.c});
       else if(type==='solosolo') net.send({t:'solosolo'});
       return;
@@ -364,6 +368,7 @@ SJ.room = (function(){
     else if(type==='ttagain'){ if(M&&M.gameType==='tictacmot') ttStart(); }
     else if(type==='soloplay'){ if(M&&M.gameType==='solo') soloPlay(myId, payload.i); }
     else if(type==='solodraw'){ if(M&&M.gameType==='solo') soloDraw(myId); }
+    else if(type==='solopass'){ if(M&&M.gameType==='solo') soloPass(myId); }
     else if(type==='solocolor'){ if(M&&M.gameType==='solo') soloChooseColor(myId, payload.c); }
     else if(type==='solosolo'){ if(M&&M.gameType==='solo') soloCallSolo(myId); }
     else if(type==='soloagain'){ if(M&&M.gameType==='solo') soloAgain(); }
@@ -391,7 +396,7 @@ SJ.room = (function(){
     if(v.phase==='ucvote'){ if(same) patchUcProg(v); else { curKey=key; rUcVote(v); } return; }
     if(v.phase==='pidraw'){ if(same) patchPi(v); else { curKey=key; rPiDraw(v); } return; }   // jamais de full re-render : préserve le canvas
     if(v.phase==='ttplay'){ curKey=key; rTtPlay(v); return; }   // re-render à chaque passage ; la mèche s'anime via {t:'fuse'}
-    if(v.phase==='soloplay'){ curKey=key; rSolo(v); return; }   // re-render à chaque coup
+    if(v.phase==='soloplay'){ if(same) patchSolo(v); else { curKey=key; rSolo(v); } return; }   // patch (pas de flash) ; full render au changement de manche
     if(same) return;                 // propose / reveal / podium / pb : re-render seulement au changement d'état
     curKey=key;
     if(v.phase==='propose') rPropose(v);
@@ -1358,24 +1363,28 @@ SJ.room = (function(){
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('ttagain'); };
   }
 
-  /* ================= SOLO ! (jeu de cartes type UNO, humains + bots) ================= */
+  /* ================= UNO ! (jeu de cartes, vraies règles : paquet fini de 108) ================= */
   const SOLO_BOTS=[{name:'Tom',emoji:'🐸',color:'#2EC4B6'},{name:'Mia',emoji:'🦊',color:'#FF8FA3'},{name:'Noé',emoji:'👾',color:'#4D96FF'},{name:'Zoé',emoji:'🐱',color:'#9B5DE5'}];
   function clearSolo(){ if(soloTimer){ clearTimeout(soloTimer); soloTimer=null; } }
   function soloSeatOf(id){ return M.seats.findIndex(s=>s.id===id); }
-  function soloCount(i){ const s=M.seats[i]; return s.bot ? (M.count[i]||0) : (M.cards[i]?M.cards[i].length:0); }
+  function soloCount(i){ return M.cards[i]?M.cards[i].length:0; }
   function soloStep(turn,steps){ const n=M.seats.length; return (((turn+M.dir*steps)%n)+n)%n; }
-  function soloGive(i,n){ if(M.seats[i].bot){ M.count[i]=(M.count[i]||0)+n; } else { for(let k=0;k<n;k++) M.cards[i].push(SJ.SOLO.randCard()); } }
-  function soloDeal(){ M.cards={}; M.count={}; M.seats.forEach((s,i)=>{ if(s.bot){ M.count[i]=7; } else { M.cards[i]=[]; for(let k=0;k<7;k++) M.cards[i].push(SJ.SOLO.randCard()); } }); }
+  function soloDrawCard(){ if(M.deck.length===0){ if(M.discard.length<=1) return null; const top=M.discard.pop(); M.deck=SJ.SOLO.shuffle(M.discard); M.discard=[top]; } return M.deck.pop()||null; }   // pioche, remélange la défausse si vide
+  function soloGive(i,n){ for(let k=0;k<n;k++){ const c=soloDrawCard(); if(c) M.cards[i].push(c); } }
+  function soloDeal(){ M.deck=SJ.SOLO.shuffle(SJ.SOLO.makeDeck()); M.cards={};
+    M.seats.forEach((s,i)=>{ M.cards[i]=M.deck.splice(0,7); });
+    let ti=M.deck.findIndex(c=>c.color!=='W'&&['skip','rev','+2','+4'].indexOf(c.val)<0); if(ti<0) ti=0;   // 1re défausse = un chiffre
+    const t=M.deck.splice(ti,1)[0]; M.discard=[t]; M.top=t; M.activeColor=t.color; M.drawn=null; }
   function soloStart(){
     players.forEach(p=>p.score=0);
     const seats=players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,color:p.color,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,bot:false}));
     let bi=0; while(seats.length<4 && bi<SOLO_BOTS.length){ const b=SOLO_BOTS[bi++]; seats.push({id:'sbot'+bi,name:b.name,emoji:b.emoji,color:b.color,bot:true}); }
-    M={ gameType:'solo', seats, cards:{}, count:{}, top:SJ.SOLO.startCard(), activeColor:'R', turn:0, dir:1, needColor:false, needColorSeat:-1, pendingWild:null, message:'À toi de jouer 👇', round:1, winnerSeat:-1, coins:{} };
-    M.activeColor=M.top.color; soloDeal(); seats.forEach(s=>{ M.coins[s.id]=0; });
+    M={ gameType:'solo', seats, cards:{}, deck:[], discard:[], top:null, activeColor:'R', turn:0, dir:1, needColor:false, needColorSeat:-1, pendingWild:null, drawn:null, message:'À toi de jouer 👇', round:1, winnerSeat:-1, coins:{} };
+    soloDeal(); seats.forEach(s=>{ M.coins[s.id]=0; });
     coinsClaimed=false; phase='soloplay'; curKey=null; SJ.audio.pop(); U().confetti(12); hostRefresh(); scheduleSoloAI();
   }
-  function soloAgain(){ clearSolo(); M.round=(M.round||1)+1; M.winnerSeat=-1; M.needColor=false; M.needColorSeat=-1; M.pendingWild=null; M.dir=1; M.turn=0; M.top=SJ.SOLO.startCard(); M.activeColor=M.top.color; soloDeal(); M.message='Nouvelle donne 🎴'; coinsClaimed=false; curKey=null; hostRefresh(); scheduleSoloAI(); }
-  function soloResolve(card){ M.top=card; if(card.color!=='W') M.activeColor=card.color; let skip=false;
+  function soloAgain(){ clearSolo(); M.round=(M.round||1)+1; M.winnerSeat=-1; M.needColor=false; M.needColorSeat=-1; M.pendingWild=null; M.dir=1; M.turn=0; soloDeal(); M.message='Nouvelle donne 🎴'; coinsClaimed=false; hostRefresh(); scheduleSoloAI(); }
+  function soloResolve(card){ M.discard.push(card); M.top=card; if(card.color!=='W') M.activeColor=card.color; let skip=false;
     if(card.val==='rev'){ M.dir=-M.dir; if(M.seats.length===2) skip=true; }
     else if(card.val==='skip'){ skip=true; }
     else if(card.val==='+2'){ skip=true; soloGive(soloStep(M.turn,1),2); }
@@ -1383,91 +1392,117 @@ SJ.room = (function(){
     M.turn=soloStep(M.turn, skip?2:1); }
   function soloWin(seat){ clearSolo(); M.winnerSeat=seat; M.message='';
     M.seats.forEach((s,i)=>{ if(!s.bot){ const win=(i===seat); M.coins[s.id]=(M.coins[s.id]||0)+(win?15:3); const p=players.find(x=>x.id===s.id); if(p&&win) p.score+=1; } });
-    curKey=null; hostRefresh(); }
-  function soloAfter(seat){ if(soloCount(seat)===0){ soloWin(seat); return; } curKey=null; hostRefresh(); scheduleSoloAI(); }
+    hostRefresh(); }
+  function soloAfter(seat){ M.drawn=null; if(soloCount(seat)===0){ soloWin(seat); return; } hostRefresh(); scheduleSoloAI(); }
   function scheduleSoloAI(){ clearSolo(); if(!M||phase!=='soloplay'||M.winnerSeat>=0||M.needColor) return;
-    if(M.seats[M.turn].bot){ soloTimer=setTimeout(()=>{ soloTimer=null; soloAImove(); }, 1000); }
-    else { soloTimer=setTimeout(()=>{ soloTimer=null; soloAutoDraw(M.turn); }, 40000); } }
-  function soloAImove(){ if(!M||phase!=='soloplay'||M.winnerSeat>=0||M.needColor) return; const t=M.turn; if(!M.seats[t].bot) return;
-    if((M.count[t]||0)>0 && Math.random()<0.82){ const card=SJ.SOLO.aiCard(M.activeColor); M.count[t]-=1;
-      if(card.color==='W') M.activeColor=SJ.SOLO.COLORS[Math.floor(Math.random()*4)];
-      soloResolve(card); const extra=card.color==='W'?' ('+SJ.SOLO.CMAP[M.activeColor].name+')':'';
-      M.message=M.seats[t].name+' pose '+SJ.SOLO.label(card)+extra;
-      if(M.count[t]===0){ soloWin(t); return; } if(M.count[t]===1) M.message=M.seats[t].name+' crie UNO ! 🔔';
-    } else { M.count[t]=(M.count[t]||0)+1; M.message=M.seats[t].name+' pioche 🃏'; M.turn=soloStep(M.turn,1); }
-    curKey=null; hostRefresh(); scheduleSoloAI(); }
-  function soloAutoDraw(seat){ if(!M||phase!=='soloplay'||M.turn!==seat||M.seats[seat].bot||M.winnerSeat>=0) return;
-    M.cards[seat].push(SJ.SOLO.randCard()); M.message=M.seats[seat].name+' pioche (temps écoulé) 🃏'; M.turn=soloStep(M.turn,1); curKey=null; hostRefresh(); scheduleSoloAI(); }
+    if(M.seats[M.turn].bot){ soloTimer=setTimeout(()=>{ soloTimer=null; soloAImove(); }, 1100); }
+    else { soloTimer=setTimeout(()=>{ soloTimer=null; soloAutoPass(M.turn); }, 45000); } }
+  function soloBotPlay(t, idx){ const hand=M.cards[t]; const card=hand.splice(idx,1)[0];
+    if(card.color==='W'){ M.activeColor=SJ.SOLO.bestColor(hand); M.top=card; M.discard.push(card);   // joker : couleur choisie, puis on résout l'effet sans re-push
+      let skip=false; if(card.val==='+4'){ skip=true; soloGive(soloStep(M.turn,1),4); } M.turn=soloStep(M.turn, skip?2:1);
+      M.message=M.seats[t].name+' pose '+SJ.SOLO.label(card)+' ('+SJ.SOLO.CMAP[M.activeColor].name+')';
+    } else { soloResolve(card); M.message=M.seats[t].name+' pose '+SJ.SOLO.label(card); }
+    if(hand.length===0){ soloWin(t); return; } if(hand.length===1) M.message=M.seats[t].name+' crie UNO ! 🔔';
+    hostRefresh(); scheduleSoloAI(); }
+  function soloAImove(){ if(!M||phase!=='soloplay'||M.winnerSeat>=0||M.needColor) return; const t=M.turn; if(!M.seats[t].bot) return; const hand=M.cards[t];
+    let idx=-1; for(let i=0;i<hand.length;i++){ if(hand[i].color!=='W' && SJ.SOLO.playable(hand[i],M.activeColor,M.top)){ idx=i; break; } }
+    if(idx<0){ for(let i=0;i<hand.length;i++){ if(hand[i].color==='W'){ idx=i; break; } } }   // sinon un joker
+    if(idx>=0){ soloBotPlay(t, idx); return; }
+    const c=soloDrawCard(); if(c){ hand.push(c); if(SJ.SOLO.playable(c,M.activeColor,M.top)){ soloBotPlay(t, hand.length-1); return; } }
+    M.message=M.seats[t].name+' pioche 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); scheduleSoloAI(); }
+  function soloAutoPass(seat){ if(!M||phase!=='soloplay'||M.turn!==seat||M.seats[seat].bot||M.winnerSeat>=0) return;
+    if(M.drawn==null){ const c=soloDrawCard(); if(c) M.cards[seat].push(c); } M.drawn=null; M.message=M.seats[seat].name+' (absent) passe 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); scheduleSoloAI(); }
   function soloPlay(id, idx){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return;
     const seat=soloSeatOf(id); if(seat<0||seat!==M.turn) return; const hand=M.cards[seat]; if(!hand||idx<0||idx>=hand.length) return;
-    const card=hand[idx]; if(!(card.color==='W'||card.color===M.activeColor||card.val===M.top.val)) return;
-    clearSolo(); hand.splice(idx,1);
-    if(card.color==='W'){ M.top=card; M.needColor=true; M.needColorSeat=seat; M.pendingWild=card; M.message=M.seats[seat].name+' choisit une couleur 🌈'; curKey=null; hostRefresh(); return; }
-    soloResolve(card); M.message=(seat===0||!M.seats[seat].bot?'Tu poses ':M.seats[seat].name+' pose ')+SJ.SOLO.label(card);
-    if(hand.length===1) M.message=M.seats[seat].name+' — plus qu\'une carte, UNO ! 🔔';
+    const card=hand[idx]; if(!SJ.SOLO.playable(card,M.activeColor,M.top)) return;
+    clearSolo(); M.drawn=null; hand.splice(idx,1);
+    if(card.color==='W'){ M.top=card; M.needColor=true; M.needColorSeat=seat; M.pendingWild=card; M.message='Choisis une couleur 🌈'; hostRefresh(); return; }
+    soloResolve(card); M.message='Tu poses '+SJ.SOLO.label(card);
+    if(hand.length===1) M.message='Plus qu\'une carte — crie UNO ! 🔔';
     soloAfter(seat); }
-  function soloDraw(id){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.turn||M.seats[seat].bot) return;
-    clearSolo(); M.cards[seat].push(SJ.SOLO.randCard()); M.message='Tu pioches 🃏'; M.turn=soloStep(M.turn,1); curKey=null; hostRefresh(); scheduleSoloAI(); }
+  function soloDraw(id){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.turn||M.seats[seat].bot||M.drawn!=null) return;
+    clearSolo(); const c=soloDrawCard(); if(c) M.cards[seat].push(c);
+    if(c && SJ.SOLO.playable(c,M.activeColor,M.top)){ M.drawn=M.cards[seat].length-1; M.message='Tu as pioché — joue-la ou passe 👇'; hostRefresh(); scheduleSoloAI(); }
+    else { M.drawn=null; M.message='Tu pioches et passes 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); scheduleSoloAI(); } }
+  function soloPass(id){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.turn||M.seats[seat].bot||M.drawn==null) return;
+    clearSolo(); M.drawn=null; M.message='Tu passes ton tour ⏭️'; M.turn=soloStep(M.turn,1); hostRefresh(); scheduleSoloAI(); }
   function soloChooseColor(id, c){ if(phase!=='soloplay'||!M||!M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.needColorSeat) return; if(SJ.SOLO.COLORS.indexOf(c)<0) return;
     clearSolo(); M.activeColor=c; const card=M.pendingWild; soloResolve(card); M.needColor=false; M.needColorSeat=-1; M.pendingWild=null;
     M.message='Joker → '+SJ.SOLO.CMAP[c].name; soloAfter(seat); }
   function soloCallSolo(id){ if(!M||M.winnerSeat>=0) return; const seat=soloSeatOf(id); if(seat<0) return;
-    if(soloCount(seat)===1){ M.message='🔔 '+(seat===0||!M.seats[seat].bot? (M.seats[seat].id===myId?'Tu cries':M.seats[seat].name+' crie') : M.seats[seat].name+' crie')+' UNO !'; curKey=null; hostRefresh(); } else U().toast('Crie UNO quand il te reste 1 carte 🙂'); }
+    if(soloCount(seat)===1){ M.message='🔔 '+(M.seats[seat].id===myId?'Tu cries':M.seats[seat].name+' crie')+' UNO !'; hostRefresh(); } else U().toast('Crie UNO quand il te reste 1 carte 🙂'); }
 
+  const SOLO_EMPTY='<span style="color:rgba(255,255,255,.7);font-weight:700">tu regardes la partie 👀</span>';
+  function soloRingHTML(s){ return s.ring.map(pl=>`<div style="position:absolute;top:${pl.top};left:${pl.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;width:84px">
+      <div style="position:relative;display:flex;align-items:center;justify-content:center">
+        <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(-14deg) translateX(-7px)"></div>
+        <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(14deg) translateX(7px)"></div>
+        <div style="width:54px;height:54px;border-radius:50%;border:4px solid ${pl.isTurn?'#FFC93C':'#3B2D5E'};background:${pl.isTurn?'#FFF1C9':'#fff'};display:flex;align-items:center;justify-content:center;z-index:1;${pl.isTurn?'animation:turnring 1s ease-in-out infinite;':''}">${U().ava({avatar:pl.avatar,emoji:pl.emoji,hat:pl.hat,hatPos:pl.hatPos,bg:pl.bg},44)}</div>
+        ${pl.solo?'<div class="pop" style="position:absolute;top:-12px;right:-14px;background:#FFC93C;border:2px solid #3B2D5E;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;z-index:2">UNO!</div>':''}
+      </div>
+      <div style="font-size:14px;font-weight:800;color:${pl.isTurn?'#FFF1C9':'#fff'};text-shadow:0 1px 2px rgba(0,0,0,.4);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
+      <div style="background:rgba(0,0,0,.28);border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:1px 11px;font-size:13px;font-weight:800;color:#fff">🂠 ${pl.count}</div></div>`).join(''); }
+  function soloCardFace(c, ink, corner){ return `<div style="position:absolute;inset:13px 7px;border-radius:50% / 40%;background:rgba(255,255,255,.92)"></div><div style="position:relative;font-size:24px;font-weight:800;color:${ink}">${esc(c)}</div><div style="position:absolute;top:3px;left:5px;font-size:11px;font-weight:800;color:${corner}">${esc(c)}</div><div style="position:absolute;bottom:3px;right:5px;font-size:11px;font-weight:800;color:${corner}">${esc(c)}</div>`; }
+  function soloHandHTML(s, deal){ if(!s.hand.length) return SOLO_EMPTY; return s.hand.map((c,k)=>`<button class="solocard" data-i="${c.i}" ${c.playable?'':'disabled'} style="position:relative;width:56px;height:84px;border-radius:12px;border:3px solid #3B2D5E;background:${c.bg};transform:translateY(${c.playable?'-12px':'0'});opacity:${s.myTurn?(c.playable?'1':'.55'):'.85'};box-shadow:${c.playable?'0 0 0 4px rgba(255,201,60,.55),0 9px 0 rgba(0,0,0,.3)':'0 5px 0 rgba(0,0,0,.3)'};cursor:${c.playable?'pointer':'default'};transition:transform .12s ease;font-family:inherit;flex:none${deal?`;animation:dealin .42s ease backwards;animation-delay:${k*55}ms`:''}">${soloCardFace(c.sym,c.ink,c.corner)}</button>`).join(''); }
+  function soloTopHTML(s, land){ return `<div id="solo-discard" style="position:relative;width:64px;height:96px;border-radius:14px;border:3px solid #3B2D5E;background:${s.top.bg};box-shadow:0 6px 0 rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;transform:rotate(-5deg)${land?';animation:cardland .32s ease':''}"><div style="position:absolute;inset:15px 9px;border-radius:50% / 40%;background:rgba(255,255,255,.92)"></div><div style="position:relative;font-size:30px;font-weight:800;color:${s.top.ink}">${esc(s.top.sym)}</div><div style="position:absolute;top:5px;left:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div><div style="position:absolute;bottom:5px;right:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div></div>`; }
+  function soloPassHTML(s){ return s.canPass ? '<button id="solo-pass" style="background:#FF8FA3;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 14px;font-size:15px;font-weight:800;box-shadow:0 5px 0 #D45D75;cursor:pointer;font-family:inherit">⏭️ Passer</button>' : ''; }
+  function soloOverlaysHTML(s, iAmHost){
+    const picker = s.needColor ? `<div style="position:absolute;inset:0;background:rgba(31,22,56,.72);display:flex;align-items:center;justify-content:center;z-index:5;border-radius:27px"><div style="background:#FFF8EC;border:3px solid #3B2D5E;border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:14px;align-items:center;box-shadow:0 10px 0 rgba(0,0,0,.3)"><div style="font-size:22px;font-weight:800">🌈 Choisis une couleur</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${s.colorChoices.map(cc=>`<button class="solocol" data-c="${cc.c}" style="width:82px;height:82px;border-radius:18px;border:3px solid #3B2D5E;background:${cc.hex};box-shadow:0 6px 0 ${cc.shadow};cursor:pointer;font-size:16px;font-weight:800;color:${cc.ink};font-family:inherit">${esc(cc.name)}</button>`).join('')}</div></div></div>` : '';
+    const winner = s.winner ? `<div style="position:absolute;inset:0;background:rgba(31,22,56,.8);display:flex;align-items:center;justify-content:center;z-index:6;border-radius:27px;padding:14px"><div class="pop" style="background:#fff;border:3px solid #3B2D5E;border-radius:28px;padding:26px;display:flex;flex-direction:column;gap:13px;align-items:center;text-align:center;box-shadow:0 12px 0 #FFC93C;max-width:330px"><div style="position:relative;width:104px;height:104px"><div style="position:absolute;inset:0;border-radius:50%;border:4px solid #3B2D5E;background:#FFF1C9;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 0 #E8C766;animation:floaty 1.6s ease-in-out infinite">${U().ava({avatar:s.winner.avatar,emoji:s.winner.emoji,hat:s.winner.hat,hatPos:s.winner.hatPos,bg:s.winner.bg},84)}</div><div class="pop" style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:36px">👑</div></div><div style="font-size:27px;font-weight:800">${s.winner.you?'Tu gagnes !':esc(s.winner.name)+' gagne !'}</div><div style="font-size:16px;font-weight:700;color:#7A6BA8">Plus une seule carte 🎉</div><span class="pill paper" style="font-size:16px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${s.winner.earned||0} 🪙</span>${iAmHost?'<button class="btn btn--coral block" id="soloagain">🔁 Rejouer</button>':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}</div></div>` : '';
+    return picker+winner;
+  }
+  function soloFly(cardEl){ const disc=app().querySelector('#solo-discard'); if(!disc||!cardEl) return;
+    const a=cardEl.getBoundingClientRect(), d=disc.getBoundingClientRect(); const clone=cardEl.cloneNode(true);
+    clone.style.cssText='position:fixed;left:'+a.left+'px;top:'+a.top+'px;width:'+a.width+'px;height:'+a.height+'px;margin:0;z-index:300;transform:none;opacity:1;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s;pointer-events:none;border:3px solid #3B2D5E;border-radius:12px;background:'+(cardEl.style.background||'#fff');
+    document.body.appendChild(clone); cardEl.style.visibility='hidden';
+    const dx=(d.left+d.width/2)-(a.left+a.width/2), dy=(d.top+d.height/2)-(a.top+a.height/2);
+    requestAnimationFrame(()=>{ clone.style.transform='translate('+dx+'px,'+dy+'px) rotate(-6deg) scale(1.05)'; clone.style.opacity='.25'; });
+    setTimeout(()=>{ if(clone.parentNode) clone.remove(); }, 340); }
+  function soloWire(v){ const s=v.solo;
+    const dr=$('#solodraw'); if(dr) dr.onclick=()=>{ if(!s.drawEnabled) return; SJ.audio.click(); act('solodraw'); };
+    app().querySelectorAll('.solocard').forEach(b=> b.onclick=()=>{ if(b.disabled) return; soloFly(b); SJ.audio.pop(); act('soloplay',{i:+b.dataset.i}); });
+    app().querySelectorAll('.solocol').forEach(b=> b.onclick=()=>{ SJ.audio.click(); act('solocolor',{c:b.dataset.c}); });
+    const sc=$('#solocall'); if(sc) sc.onclick=()=>{ SJ.audio.coin&&SJ.audio.coin(); act('solosolo'); };
+    const ps=$('#solo-pass'); if(ps) ps.onclick=()=>{ SJ.audio.click(); act('solopass'); };
+    const ag=$('#soloagain'); if(ag) ag.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('soloagain'); };
+  }
+  function soloClaim(s){ if(s.winner && !coinsClaimed){ SJ.store.addCoins(s.winner.earned||0); coinsClaimed=true; if(s.winner.you){ SJ.audio.win(); U().confetti(50); } else { SJ.audio.lose&&SJ.audio.lose(); } } }
+  function patchSolo(v){ const s=v.solo; const q=sel=>app().querySelector(sel);   // mise à jour SANS tout reconstruire (plus de flash)
+    const ac=q('#solo-active'); if(ac) ac.style.background=s.activeColorHex;
+    const dir=q('#solo-dir'); if(dir) dir.textContent=s.dir===1?'↻':'↺';
+    const rnd=q('#solo-round'); if(rnd) rnd.textContent='🎴 Manche '+s.round;
+    const disc=q('#solo-discard'); if(disc) disc.outerHTML=soloTopHTML(s, true);   // la carte posée « atterrit »
+    const ring=q('#solo-ring'); if(ring) ring.innerHTML=soloRingHTML(s);
+    const msg=q('#solo-msg'); if(msg) msg.textContent=s.message||'';
+    const hc=q('#solo-handcount'); if(hc) hc.textContent='Ta main · '+s.handCount+' carte'+(s.handCount>1?'s':'');
+    const hand=q('#solo-hand'); if(hand) hand.innerHTML=soloHandHTML(s,false);
+    const dg=q('#solo-drawglow'); if(dg) dg.style.boxShadow=s.drawEnabled?'0 0 0 4px rgba(255,201,60,.5)':'';
+    const pw=q('#solo-passwrap'); if(pw) pw.innerHTML=soloPassHTML(s);
+    const ov=q('#solo-overlays'); if(ov) ov.innerHTML=soloOverlaysHTML(s,v.iAmHost);
+    soloWire(v); soloClaim(s);
+  }
   function rSolo(v){ const s=v.solo;
-    const ringHTML=s.ring.map(pl=>`<div style="position:absolute;top:${pl.top};left:${pl.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;width:84px">
-        <div style="position:relative;display:flex;align-items:center;justify-content:center">
-          <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(-14deg) translateX(-7px)"></div>
-          <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(14deg) translateX(7px)"></div>
-          <div style="width:54px;height:54px;border-radius:50%;border:4px solid ${pl.isTurn?'#FFC93C':'#3B2D5E'};background:${pl.isTurn?'#FFF1C9':'#fff'};display:flex;align-items:center;justify-content:center;z-index:1;${pl.isTurn?'animation:turnring 1s ease-in-out infinite;':''}">${U().ava({avatar:pl.avatar,emoji:pl.emoji,hat:pl.hat,hatPos:pl.hatPos,bg:pl.bg},44)}</div>
-          ${pl.solo?'<div class="pop" style="position:absolute;top:-12px;right:-14px;background:#FFC93C;border:2px solid #3B2D5E;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;z-index:2">UNO!</div>':''}
-        </div>
-        <div style="font-size:14px;font-weight:800;color:${pl.isTurn?'#FFF1C9':'#fff'};text-shadow:0 1px 2px rgba(0,0,0,.4);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
-        <div style="background:rgba(0,0,0,.28);border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:1px 11px;font-size:13px;font-weight:800;color:#fff">🂠 ${pl.count}</div>
-      </div>`).join('');
-    const handHTML=s.hand.map(c=>`<button class="solocard" data-i="${c.i}" ${c.playable?'':'disabled'} style="position:relative;width:56px;height:84px;border-radius:12px;border:3px solid #3B2D5E;background:${c.bg};transform:translateY(${c.playable?'-12px':'0'});opacity:${s.myTurn?(c.playable?'1':'.55'):'.85'};box-shadow:${c.playable?'0 0 0 4px rgba(255,201,60,.55),0 9px 0 rgba(0,0,0,.3)':'0 5px 0 rgba(0,0,0,.3)'};cursor:${c.playable?'pointer':'default'};transition:transform .12s ease;font-family:inherit;flex:none">
-        <div style="position:absolute;inset:13px 7px;border-radius:50% / 40%;background:rgba(255,255,255,.92)"></div>
-        <div style="position:relative;font-size:24px;font-weight:800;color:${c.ink}">${esc(c.sym)}</div>
-        <div style="position:absolute;top:3px;left:5px;font-size:11px;font-weight:800;color:${c.corner}">${esc(c.sym)}</div>
-        <div style="position:absolute;bottom:3px;right:5px;font-size:11px;font-weight:800;color:${c.corner}">${esc(c.sym)}</div></button>`).join('');
-    const colorPicker = s.needColor ? `<div style="position:absolute;inset:0;background:rgba(31,22,56,.72);display:flex;align-items:center;justify-content:center;z-index:5;border-radius:27px">
-        <div style="background:#FFF8EC;border:3px solid #3B2D5E;border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:14px;align-items:center;box-shadow:0 10px 0 rgba(0,0,0,.3)">
-          <div style="font-size:22px;font-weight:800">🌈 Choisis une couleur</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${s.colorChoices.map(cc=>`<button class="solocol" data-c="${cc.c}" style="width:82px;height:82px;border-radius:18px;border:3px solid #3B2D5E;background:${cc.hex};box-shadow:0 6px 0 ${cc.shadow};cursor:pointer;font-size:16px;font-weight:800;color:${cc.ink};font-family:inherit">${esc(cc.name)}</button>`).join('')}</div>
-        </div></div>` : '';
-    const winnerOv = s.winner ? `<div style="position:absolute;inset:0;background:rgba(31,22,56,.8);display:flex;align-items:center;justify-content:center;z-index:6;border-radius:27px;padding:14px">
-        <div style="background:#fff;border:3px solid #3B2D5E;border-radius:28px;padding:26px;display:flex;flex-direction:column;gap:13px;align-items:center;text-align:center;box-shadow:0 12px 0 #FFC93C;max-width:330px">
-          <div style="position:relative;width:104px;height:104px"><div style="position:absolute;inset:0;border-radius:50%;border:4px solid #3B2D5E;background:#FFF1C9;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 0 #E8C766;animation:floaty 1.6s ease-in-out infinite">${U().ava({avatar:s.winner.avatar,emoji:s.winner.emoji,hat:s.winner.hat,hatPos:s.winner.hatPos,bg:s.winner.bg},84)}</div><div class="pop" style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:36px">👑</div></div>
-          <div style="font-size:27px;font-weight:800">${s.winner.you?'Tu gagnes !':esc(s.winner.name)+' gagne !'}</div>
-          <div style="font-size:16px;font-weight:700;color:#7A6BA8">Plus une seule carte 🎉</div>
-          <span class="pill paper" style="font-size:16px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${s.winner.earned||0} 🪙</span>
-          ${v.iAmHost?'<button class="btn btn--coral block" id="soloagain">🔁 Rejouer</button>':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
-        </div></div>` : '';
     mMount(`<section class="screen"><div class="stage" style="max-width:560px">
       <div style="position:relative;background:radial-gradient(circle at 50% 42%,#2EC4B6 0%,#1E8B81 100%);border:3px solid #3B2D5E;border-radius:30px;box-shadow:0 10px 0 #176258;padding:clamp(14px,3vw,24px);display:flex;flex-direction:column;gap:13px;overflow:hidden;width:100%">
         <div class="row between wrap" style="gap:10px">
-          <span style="background:rgba(0,0,0,.22);border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:4px 14px;font-size:15px;font-weight:800;color:#fff">🎴 Manche ${s.round}</span>
-          <div class="row gap6"><span style="display:flex;align-items:center;gap:7px;background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 12px 3px 7px;font-size:13px;font-weight:800;color:#7A6BA8">couleur<span style="width:22px;height:22px;border-radius:50%;border:2px solid #3B2D5E;background:${s.activeColorHex}"></span></span><span style="background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 12px;font-size:16px;font-weight:800">${s.dir===1?'↻':'↺'}</span></div>
+          <span id="solo-round" style="background:rgba(0,0,0,.22);border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:4px 14px;font-size:15px;font-weight:800;color:#fff">🎴 Manche ${s.round}</span>
+          <div class="row gap6"><span style="display:flex;align-items:center;gap:7px;background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 12px 3px 7px;font-size:13px;font-weight:800;color:#7A6BA8">couleur<span id="solo-active" style="width:22px;height:22px;border-radius:50%;border:2px solid #3B2D5E;background:${s.activeColorHex}"></span></span><span id="solo-dir" style="background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 12px;font-size:16px;font-weight:800">${s.dir===1?'↻':'↺'}</span></div>
         </div>
         <div style="position:relative;width:min(420px,86vw);height:min(420px,86vw);margin:2px auto 0">
           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px">
-            <div id="solodraw" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:${s.myTurn?'pointer':'default'}"><div style="position:relative;width:56px;height:84px"><div style="position:absolute;inset:0;transform:translate(4px,4px);border-radius:12px;border:3px solid #3B2D5E;background:#4A2E9E"></div><div style="position:absolute;inset:0;border-radius:12px;border:3px solid #3B2D5E;background:linear-gradient(135deg,#6A4BD6,#9B5DE5);display:flex;align-items:center;justify-content:center;${s.myTurn?'box-shadow:0 0 0 4px rgba(255,201,60,.5)':''}"><div style="font-family:Caveat,cursive;font-size:20px;font-weight:700;color:#fff;transform:rotate(-12deg)">UNO</div></div></div><div style="font-size:12px;font-weight:800;color:#fff">Pioche</div></div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:5px"><div style="position:relative;width:64px;height:96px;border-radius:14px;border:3px solid #3B2D5E;background:${s.top.bg};box-shadow:0 6px 0 rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;transform:rotate(-5deg)"><div style="position:absolute;inset:15px 9px;border-radius:50% / 40%;background:rgba(255,255,255,.92)"></div><div style="position:relative;font-size:30px;font-weight:800;color:${s.top.ink}">${esc(s.top.sym)}</div><div style="position:absolute;top:5px;left:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div><div style="position:absolute;bottom:5px;right:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div></div><div style="font-size:12px;font-weight:800;color:#fff">Tas</div></div>
-          </div>${ringHTML}
+            <div id="solodraw" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer"><div style="position:relative;width:56px;height:84px"><div style="position:absolute;inset:0;transform:translate(4px,4px);border-radius:12px;border:3px solid #3B2D5E;background:#4A2E9E"></div><div id="solo-drawglow" style="position:absolute;inset:0;border-radius:12px;border:3px solid #3B2D5E;background:linear-gradient(135deg,#6A4BD6,#9B5DE5);display:flex;align-items:center;justify-content:center;${s.drawEnabled?'box-shadow:0 0 0 4px rgba(255,201,60,.5)':''}"><div style="font-family:Caveat,cursive;font-size:20px;font-weight:700;color:#fff;transform:rotate(-12deg)">UNO</div></div></div><div style="font-size:12px;font-weight:800;color:#fff">Pioche</div></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:5px">${soloTopHTML(s,false)}<div style="font-size:12px;font-weight:800;color:#fff">Tas</div></div>
+          </div>
+          <div id="solo-ring">${soloRingHTML(s)}</div>
         </div>
-        <div style="min-height:24px;text-align:center;font-size:16px;font-weight:800;color:#fff">${esc(s.message||'')}</div>
+        <div id="solo-msg" style="min-height:24px;text-align:center;font-size:16px;font-weight:800;color:#fff">${esc(s.message||'')}</div>
         <div style="background:rgba(0,0,0,.18);border:2px solid rgba(255,255,255,.3);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:10px">
-          <div class="row between wrap" style="gap:10px"><span style="font-size:16px;font-weight:800;color:#fff">Ta main · ${s.handCount} carte${s.handCount>1?'s':''}</span><button id="solocall" style="display:flex;align-items:center;gap:6px;background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 16px;font-size:16px;font-weight:800;box-shadow:0 5px 0 #D9A416;cursor:pointer;font-family:inherit">🔔 UNO !</button></div>
-          <div class="row" style="align-items:flex-end;justify-content:center;gap:7px;flex-wrap:wrap;min-height:90px">${handHTML||'<span style="color:rgba(255,255,255,.7);font-weight:700">tu regardes la partie 👀</span>'}</div>
+          <div class="row between wrap" style="gap:10px"><span id="solo-handcount" style="font-size:16px;font-weight:800;color:#fff">Ta main · ${s.handCount} carte${s.handCount>1?'s':''}</span><div class="row gap6"><span id="solo-passwrap">${soloPassHTML(s)}</span><button id="solocall" style="display:flex;align-items:center;gap:6px;background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 16px;font-size:16px;font-weight:800;box-shadow:0 5px 0 #D9A416;cursor:pointer;font-family:inherit">🔔 UNO !</button></div></div>
+          <div id="solo-hand" class="row" style="align-items:flex-end;justify-content:center;gap:7px;flex-wrap:wrap;min-height:90px">${soloHandHTML(s,true)}</div>
         </div>
-        ${colorPicker}${winnerOv}
+        <div id="solo-overlays">${soloOverlaysHTML(s,v.iAmHost)}</div>
       </div></div></section>`);
-    if(s.myTurn){ const dr=$('#solodraw'); if(dr) dr.onclick=()=>{ SJ.audio.click(); act('solodraw'); }; }
-    app().querySelectorAll('.solocard').forEach(b=> b.onclick=()=>{ if(b.disabled) return; SJ.audio.pop(); act('soloplay',{i:+b.dataset.i}); });
-    app().querySelectorAll('.solocol').forEach(b=> b.onclick=()=>{ SJ.audio.click(); act('solocolor',{c:b.dataset.c}); });
-    const sc=$('#solocall'); if(sc) sc.onclick=()=>{ SJ.audio.coin&&SJ.audio.coin(); act('solosolo'); };
-    const ag=$('#soloagain'); if(ag) ag.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('soloagain'); };
-    if(s.winner && !coinsClaimed){ SJ.store.addCoins(s.winner.earned||0); coinsClaimed=true; if(s.winner.you){ SJ.audio.win(); U().confetti(50); } else { SJ.audio.lose&&SJ.audio.lose(); } }
+    soloWire(v); soloClaim(s);
   }
 
   (function(){ const b=document.getElementById('gomenu'); if(b) b.onclick=()=>{ SJ.audio.click(); act('tosalon'); }; })();

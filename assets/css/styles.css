@@ -197,6 +197,8 @@ body.in-game .screen{ padding-top:60px; }   /* place pour le bouton menu en haut
 @keyframes shake{10%,90%{transform:translateX(-2px)}30%,70%{transform:translateX(4px)}50%{transform:translateX(-5px)}}
 @keyframes sparkle{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
 @keyframes turnring{0%,100%{box-shadow:0 0 0 4px rgba(255,201,60,.45)}50%{box-shadow:0 0 0 8px rgba(255,201,60,.85)}}
+@keyframes dealin{from{opacity:0;transform:translateY(46px) scale(.7)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes cardland{from{transform:rotate(-5deg) scale(.35);opacity:.2}60%{transform:rotate(-5deg) scale(1.12)}to{transform:rotate(-5deg) scale(1);opacity:1}}
 @keyframes pbbar{from{width:100%}to{width:0%}}
 .pop{animation:pop .45s cubic-bezier(.34,1.56,.64,1) both}
 .floaty{animation:floaty 3s ease-in-out infinite}
