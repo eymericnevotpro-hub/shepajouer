@@ -425,7 +425,7 @@ SJ.room = (function(){
     const avatarP = SJ.ui.myAvatarProfile();
     const actionsInner = host
       ? `<div class="row gap8" style="width:100%"><button class="btn btn--yellow grow" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Hasard'}</button><button class="btn btn--teal grow" id="launch" ${s.canLaunch?'':'disabled'}>${s.winner!=null?"C'est parti ▶":"Lancer ▶"}</button></div>
-         <div class="center sa-hint" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — min. 2 (ou joue à Solo ! tout seul)':"L'hôte lance quand vous êtes prêts"}</div>`
+         <div class="center sa-hint" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — min. 2 (ou joue à Uno ! tout seul)':"L'hôte lance quand vous êtes prêts"}</div>`
       : `<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ l'hôte lance la partie…</div>`;
     const settingsPanel = host ? `<div class="salon-cfg-wrap" id="cfgwrap">
         <div class="card salon-cfg" style="display:flex;flex-direction:column;gap:10px;box-shadow:0 9px 0 #C9BBE8">
@@ -1393,7 +1393,7 @@ SJ.room = (function(){
       if(card.color==='W') M.activeColor=SJ.SOLO.COLORS[Math.floor(Math.random()*4)];
       soloResolve(card); const extra=card.color==='W'?' ('+SJ.SOLO.CMAP[M.activeColor].name+')':'';
       M.message=M.seats[t].name+' pose '+SJ.SOLO.label(card)+extra;
-      if(M.count[t]===0){ soloWin(t); return; } if(M.count[t]===1) M.message=M.seats[t].name+' crie SOLO ! 🔔';
+      if(M.count[t]===0){ soloWin(t); return; } if(M.count[t]===1) M.message=M.seats[t].name+' crie UNO ! 🔔';
     } else { M.count[t]=(M.count[t]||0)+1; M.message=M.seats[t].name+' pioche 🃏'; M.turn=soloStep(M.turn,1); }
     curKey=null; hostRefresh(); scheduleSoloAI(); }
   function soloAutoDraw(seat){ if(!M||phase!=='soloplay'||M.turn!==seat||M.seats[seat].bot||M.winnerSeat>=0) return;
@@ -1404,7 +1404,7 @@ SJ.room = (function(){
     clearSolo(); hand.splice(idx,1);
     if(card.color==='W'){ M.top=card; M.needColor=true; M.needColorSeat=seat; M.pendingWild=card; M.message=M.seats[seat].name+' choisit une couleur 🌈'; curKey=null; hostRefresh(); return; }
     soloResolve(card); M.message=(seat===0||!M.seats[seat].bot?'Tu poses ':M.seats[seat].name+' pose ')+SJ.SOLO.label(card);
-    if(hand.length===1) M.message=M.seats[seat].name+' — plus qu\'une carte, SOLO ! 🔔';
+    if(hand.length===1) M.message=M.seats[seat].name+' — plus qu\'une carte, UNO ! 🔔';
     soloAfter(seat); }
   function soloDraw(id){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.turn||M.seats[seat].bot) return;
     clearSolo(); M.cards[seat].push(SJ.SOLO.randCard()); M.message='Tu pioches 🃏'; M.turn=soloStep(M.turn,1); curKey=null; hostRefresh(); scheduleSoloAI(); }
@@ -1412,7 +1412,7 @@ SJ.room = (function(){
     clearSolo(); M.activeColor=c; const card=M.pendingWild; soloResolve(card); M.needColor=false; M.needColorSeat=-1; M.pendingWild=null;
     M.message='Joker → '+SJ.SOLO.CMAP[c].name; soloAfter(seat); }
   function soloCallSolo(id){ if(!M||M.winnerSeat>=0) return; const seat=soloSeatOf(id); if(seat<0) return;
-    if(soloCount(seat)===1){ M.message='🔔 '+(seat===0||!M.seats[seat].bot? (M.seats[seat].id===myId?'Tu cries':M.seats[seat].name+' crie') : M.seats[seat].name+' crie')+' SOLO !'; curKey=null; hostRefresh(); } else U().toast('Crie SOLO quand il te reste 1 carte 🙂'); }
+    if(soloCount(seat)===1){ M.message='🔔 '+(seat===0||!M.seats[seat].bot? (M.seats[seat].id===myId?'Tu cries':M.seats[seat].name+' crie') : M.seats[seat].name+' crie')+' UNO !'; curKey=null; hostRefresh(); } else U().toast('Crie UNO quand il te reste 1 carte 🙂'); }
 
   function rSolo(v){ const s=v.solo;
     const ringHTML=s.ring.map(pl=>`<div style="position:absolute;top:${pl.top};left:${pl.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;width:84px">
@@ -1420,7 +1420,7 @@ SJ.room = (function(){
           <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(-14deg) translateX(-7px)"></div>
           <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(14deg) translateX(7px)"></div>
           <div style="width:54px;height:54px;border-radius:50%;border:4px solid ${pl.isTurn?'#FFC93C':'#3B2D5E'};background:${pl.isTurn?'#FFF1C9':'#fff'};display:flex;align-items:center;justify-content:center;z-index:1;${pl.isTurn?'animation:turnring 1s ease-in-out infinite;':''}">${U().ava({avatar:pl.avatar,emoji:pl.emoji,hat:pl.hat,hatPos:pl.hatPos,bg:pl.bg},44)}</div>
-          ${pl.solo?'<div class="pop" style="position:absolute;top:-12px;right:-14px;background:#FFC93C;border:2px solid #3B2D5E;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;z-index:2">SOLO!</div>':''}
+          ${pl.solo?'<div class="pop" style="position:absolute;top:-12px;right:-14px;background:#FFC93C;border:2px solid #3B2D5E;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;z-index:2">UNO!</div>':''}
         </div>
         <div style="font-size:14px;font-weight:800;color:${pl.isTurn?'#FFF1C9':'#fff'};text-shadow:0 1px 2px rgba(0,0,0,.4);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
         <div style="background:rgba(0,0,0,.28);border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:1px 11px;font-size:13px;font-weight:800;color:#fff">🂠 ${pl.count}</div>
@@ -1451,13 +1451,13 @@ SJ.room = (function(){
         </div>
         <div style="position:relative;width:min(420px,86vw);height:min(420px,86vw);margin:2px auto 0">
           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px">
-            <div id="solodraw" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:${s.myTurn?'pointer':'default'}"><div style="position:relative;width:56px;height:84px"><div style="position:absolute;inset:0;transform:translate(4px,4px);border-radius:12px;border:3px solid #3B2D5E;background:#4A2E9E"></div><div style="position:absolute;inset:0;border-radius:12px;border:3px solid #3B2D5E;background:linear-gradient(135deg,#6A4BD6,#9B5DE5);display:flex;align-items:center;justify-content:center;${s.myTurn?'box-shadow:0 0 0 4px rgba(255,201,60,.5)':''}"><div style="font-family:Caveat,cursive;font-size:20px;font-weight:700;color:#fff;transform:rotate(-12deg)">SOLO</div></div></div><div style="font-size:12px;font-weight:800;color:#fff">Pioche</div></div>
+            <div id="solodraw" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:${s.myTurn?'pointer':'default'}"><div style="position:relative;width:56px;height:84px"><div style="position:absolute;inset:0;transform:translate(4px,4px);border-radius:12px;border:3px solid #3B2D5E;background:#4A2E9E"></div><div style="position:absolute;inset:0;border-radius:12px;border:3px solid #3B2D5E;background:linear-gradient(135deg,#6A4BD6,#9B5DE5);display:flex;align-items:center;justify-content:center;${s.myTurn?'box-shadow:0 0 0 4px rgba(255,201,60,.5)':''}"><div style="font-family:Caveat,cursive;font-size:20px;font-weight:700;color:#fff;transform:rotate(-12deg)">UNO</div></div></div><div style="font-size:12px;font-weight:800;color:#fff">Pioche</div></div>
             <div style="display:flex;flex-direction:column;align-items:center;gap:5px"><div style="position:relative;width:64px;height:96px;border-radius:14px;border:3px solid #3B2D5E;background:${s.top.bg};box-shadow:0 6px 0 rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;transform:rotate(-5deg)"><div style="position:absolute;inset:15px 9px;border-radius:50% / 40%;background:rgba(255,255,255,.92)"></div><div style="position:relative;font-size:30px;font-weight:800;color:${s.top.ink}">${esc(s.top.sym)}</div><div style="position:absolute;top:5px;left:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div><div style="position:absolute;bottom:5px;right:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div></div><div style="font-size:12px;font-weight:800;color:#fff">Tas</div></div>
           </div>${ringHTML}
         </div>
         <div style="min-height:24px;text-align:center;font-size:16px;font-weight:800;color:#fff">${esc(s.message||'')}</div>
         <div style="background:rgba(0,0,0,.18);border:2px solid rgba(255,255,255,.3);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:10px">
-          <div class="row between wrap" style="gap:10px"><span style="font-size:16px;font-weight:800;color:#fff">Ta main · ${s.handCount} carte${s.handCount>1?'s':''}</span><button id="solocall" style="display:flex;align-items:center;gap:6px;background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 16px;font-size:16px;font-weight:800;box-shadow:0 5px 0 #D9A416;cursor:pointer;font-family:inherit">🔔 SOLO !</button></div>
+          <div class="row between wrap" style="gap:10px"><span style="font-size:16px;font-weight:800;color:#fff">Ta main · ${s.handCount} carte${s.handCount>1?'s':''}</span><button id="solocall" style="display:flex;align-items:center;gap:6px;background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 16px;font-size:16px;font-weight:800;box-shadow:0 5px 0 #D9A416;cursor:pointer;font-family:inherit">🔔 UNO !</button></div>
           <div class="row" style="align-items:flex-end;justify-content:center;gap:7px;flex-wrap:wrap;min-height:90px">${handHTML||'<span style="color:rgba(255,255,255,.7);font-weight:700">tu regardes la partie 👀</span>'}</div>
         </div>
         ${colorPicker}${winnerOv}
