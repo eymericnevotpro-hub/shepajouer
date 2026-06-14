@@ -127,6 +127,7 @@ SJ.GAMES = [
   { id:'tupreferes', name:'Tu préfères… ?', icon:'🤔', tagline:"Parie le % qui choisira l'option A.",             time:'8 min',  bg:'#FF5D73', shadow:'#C23A50', text:'#FFFFFF', tint:'#FFE1E6', rot:'-2deg', playable:true },
   { id:'partybox',  name:'Party Box',       icon:'📦', tagline:"Plein de mini-jeux qui s'enchaînent de plus en plus vite. 3 vies !", time:'∞', bg:'#6A4BD6', shadow:'#4A2E9E', text:'#FFFFFF', tint:'#EADBFF', rot:'2deg', playable:true },
   { id:'tictacmot', name:'Tic-Tac-Mot',     icon:'💣', tagline:'Trouve un mot avec le bout affiché… avant que la bombe pète !', time:'10 min', bg:'#3B2D5E', shadow:'#1F1638', text:'#FFFFFF', tint:'#EADBFF', rot:'-2deg', playable:true },
+  { id:'solo',  name:'Solo !',             icon:'🎴', tagline:'Vide ta main : même couleur ou chiffre, +2, joker… et crie SOLO !', time:'10 min', bg:'#1E8B81', shadow:'#114a43', text:'#FFFFFF', tint:'#D7F4F0', rot:'3deg', playable:true },
   // « bientôt » en dernier (grisés)
   { id:'quiz',  name:'Quiz éclair',        icon:'⚡', tagline:'Le plus rapide à buzzer rafle la mise.',            time:'8 min',  bg:'#FFC93C', shadow:'#D9A416', text:'#3B2D5E', tint:'#FFF1C9', rot:'-3deg' },
   { id:'chain', name:'Mots en chaîne',     icon:'🔗', tagline:'Rebondis de mot en mot sans casser la chaîne.',     time:'6 min',  bg:'#4D96FF', shadow:'#2F6BC4', text:'#FFFFFF', tint:'#DDEBFF', rot:'4deg' },
@@ -236,3 +237,28 @@ SJ.BOMBSYL = [
   {s:'EUR', hints:['FLEUR','PEUR','BONHEUR']},   {s:'AGE', hints:['PAGE','NUAGE','IMAGE']},
   {s:'TION', hints:['NATION','POTION','STATION']},{s:'POI', hints:['POISSON','POIRE','POING']},
 ];
+
+/* Solo ! (jeu de cartes type UNO) — helpers de cartes (porté du handoff Solo.dc.html). Pas de pioche finie : cartes générées au hasard. */
+SJ.SOLO = (function(){
+  const COLORS=['R','B','G','Y'];
+  const CMAP={
+    R:{bg:'#FF5D73', sh:'#C23A50', corner:'#FFFFFF', name:'Rouge', ink:'#E8455C'},
+    B:{bg:'#4D96FF', sh:'#2F6BC4', corner:'#FFFFFF', name:'Bleu',  ink:'#2F6BC4'},
+    G:{bg:'#2EC4B6', sh:'#1E8B81', corner:'#FFFFFF', name:'Vert',  ink:'#1E8B81'},
+    Y:{bg:'#FFC93C', sh:'#D9A416', corner:'#3B2D5E', name:'Jaune', ink:'#D9A416'},
+    W:{bg:'conic-gradient(#FF5D73 0deg 90deg,#FFC93C 90deg 180deg,#2EC4B6 180deg 270deg,#4D96FF 270deg 360deg)', sh:'#1F1638', corner:'#FFFFFF', name:'Joker', ink:'#3B2D5E'}
+  };
+  const ri=n=>Math.floor(Math.random()*n);
+  function sym(val){ return val==='skip'?'⊘':val==='rev'?'⇄':val==='wild'?'★':val; }
+  function label(card){ return CMAP[card.color].name+' '+sym(card.val); }
+  function randCard(){ const r=Math.random(); if(r<0.07) return {color:'W', val:Math.random()<0.5?'wild':'+4'};
+    const c=COLORS[ri(4)]; const rr=Math.random();
+    if(rr<0.12) return {color:c, val:'skip'}; if(rr<0.20) return {color:c, val:'+2'}; if(rr<0.26) return {color:c, val:'rev'};
+    return {color:c, val:String(ri(10))}; }
+  function startCard(){ let t; do{ t=randCard(); } while(t.color==='W' || ['skip','rev','+2','+4'].indexOf(t.val)>=0); return t; }   // 1re carte = un simple chiffre
+  function aiCard(activeColor){ const r=Math.random();
+    if(r<0.10) return {color:activeColor, val:'skip'}; if(r<0.18) return {color:activeColor, val:'+2'};
+    if(r<0.24) return {color:activeColor, val:'rev'}; if(r<0.29) return {color:'W', val:Math.random()<0.5?'wild':'+4'};
+    return {color:activeColor, val:String(ri(10))}; }
+  return { COLORS, CMAP, sym, label, randCard, startCard, aiCard };
+})();

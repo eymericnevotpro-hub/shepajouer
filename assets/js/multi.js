@@ -34,6 +34,7 @@ SJ.room = (function(){
   let micStream=null, pbAudioTimer=null, pbRaf=0, pbCountTimer=null;
   let piCtx=null, piCanvas=null, piIsDrawer=false, piColor='#3B2D5E', piWidth=4, piLast=null, piBuf=[], piRaf=0, piUp=null;
   let ttFuse=null;   // timer de la mèche (host) : volontairement HORS de mClear (survit aux re-render de passage)
+  let soloTimer=null;   // timer Solo ! (IA des bots / anti-AFK), géré à la main (hors mClear)
   const nowMs=()=> (window.performance&&performance.now)?performance.now():Date.now();
 
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -76,6 +77,10 @@ SJ.room = (function(){
     } else if(m.t==='piguess'){ if(M&&M.gameType==='pictionary') piGuess(id, m.text);
     } else if(m.t==='draw'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&id===piDrawer().id){ piApply(m.segs,m.c,m.w); players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'draw',segs:m.segs,c:m.c,w:m.w}); }); }
     } else if(m.t==='clear'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&id===piDrawer().id){ piClearCanvas(); players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'clear'}); }); }
+    } else if(m.t==='soloplay'){ if(M&&M.gameType==='solo') soloPlay(id, m.i);
+    } else if(m.t==='solodraw'){ if(M&&M.gameType==='solo') soloDraw(id);
+    } else if(m.t==='solocolor'){ if(M&&M.gameType==='solo') soloChooseColor(id, m.c);
+    } else if(m.t==='solosolo'){ if(M&&M.gameType==='solo') soloCallSolo(id);
     } else if(m.t==='ttword'){ if(M&&M.gameType==='tictacmot') ttSubmit(id, m.word);
     } else if(m.t==='ttinput'){ if(M&&M.gameType==='tictacmot'&&phase==='ttplay'&&id===M.holder){ players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'ttinput',text:m.text}); }); patchTtLive(m.text); }
     } else if(m.t==='tosalon'){ toSalon();
@@ -95,6 +100,7 @@ SJ.room = (function(){
 
   function hostStart(gameId){
     const real=players.length;
+    if(gameId==='solo'){ soloStart(); return; }   // jouable même seul (des bots complètent la table)
     if(real<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
     if(gameId==='partybox'){ pbStart(); return; }
     if(gameId==='bluff'){ ucStart(); return; }
@@ -165,8 +171,10 @@ SJ.room = (function(){
       const counts=SJ.GAMES.map((_,i)=>players.filter(p=>p.vote===i).length);
       let lead=0; counts.forEach((c,i)=>{ if(c>counts[lead]) lead=i; });
       const any=counts[lead]>0;
+      const targetIdx=salonWinner!=null?salonWinner:(any?lead:0); const targetGame=SJ.GAMES[targetIdx];
+      const canLaunch = players.length>=2 || (targetGame && targetGame.id==='solo');   // Solo : jouable seul
       v.salon={
-        spinning:salonSpinning, winner:salonWinner,
+        spinning:salonSpinning, winner:salonWinner, canLaunch,
         games:SJ.GAMES.map((g,i)=>({ id:g.id,name:g.name,icon:g.icon,tagline:g.tagline,time:g.time,bg:g.bg,shadow:g.shadow,text:g.text,rot:g.rot,tint:g.tint,playable:!!g.playable,
           count:counts[i], voters:players.filter(p=>p.vote===i).map(p=>({emoji:p.emoji,color:p.color})),
           isWinner:salonWinner===i, isLeader:!salonSpinning&&salonWinner==null&&any&&i===lead })),
@@ -227,6 +235,24 @@ SJ.room = (function(){
           hearts:'❤️'.repeat(M.lives[M.holder]||0)+'🖤'.repeat(Math.max(0,3-(M.lives[M.holder]||0))) }; }
         if(phase==='ttover'){ const w=players.find(x=>x.id===M.winnerId); v.tt.over={ winnerName:w?w.name:'—', winnerEmoji:w?w.emoji:'🏆', winnerColor:w?w.color:'#FFC93C',
           avatar:w?w.avatar:null, hat:w?w.hat:null, hatPos:w?w.hatPos:null, rounds:M.round, earned:(M.coins[forId]||0), iWon:(M.winnerId===forId) }; }
+        return v;
+      }
+      if(M.gameType==='solo'){
+        v.gameType='solo'; const cm=SJ.SOLO.CMAP; const N=M.seats.length; const mySeat=M.seats.findIndex(s=>s.id===forId); const posSeat=mySeat<0?0:mySeat;
+        const isTurn=i=>(M.turn===i && M.winnerSeat<0 && !M.needColor);
+        v.solo={ round:M.round, dir:M.dir, activeColorHex:cm[M.activeColor].bg, message:M.message,
+          top:{ bg:cm[M.top.color].bg, ink:cm[M.top.color].ink, corner:cm[M.top.color].corner, sym:SJ.SOLO.sym(M.top.val) },
+          myTurn:(M.turn===mySeat && !M.needColor && M.winnerSeat<0),
+          needColor:(M.needColor && M.needColorSeat===mySeat),
+          ring:M.seats.map((sp,i)=>{ const rel=((i-posSeat)%N+N)%N; const ang=(90+rel*(360/N))*Math.PI/180; const R=42; const cnt=soloCount(i);
+            return { name:sp.name, emoji:sp.emoji, avatar:sp.avatar, hat:sp.hat, hatPos:sp.hatPos, bg:sp.bg||sp.color, bot:sp.bot,
+              left:(50+R*Math.cos(ang))+'%', top:(50+R*Math.sin(ang))+'%', isTurn:isTurn(i), count:cnt, solo:(cnt===1), you:(i===mySeat) }; }),
+          colorChoices:SJ.SOLO.COLORS.map(c=>({ c, hex:cm[c].bg, shadow:cm[c].sh, name:cm[c].name, ink:c==='Y'?'#3B2D5E':'#FFFFFF' })) };
+        const myHand=(mySeat>=0?M.cards[mySeat]:null)||[];
+        v.solo.hand=myHand.map((c,i)=>({ i, bg:cm[c.color].bg, ink:cm[c.color].ink, corner:cm[c.color].corner, sym:SJ.SOLO.sym(c.val),
+          playable:(v.solo.myTurn && (c.color==='W'||c.color===M.activeColor||c.val===M.top.val)) }));
+        v.solo.handCount=myHand.length;
+        if(M.winnerSeat>=0){ const ws=M.seats[M.winnerSeat]; v.solo.winner={ name:ws.name, emoji:ws.emoji, avatar:ws.avatar, hat:ws.hat, hatPos:ws.hatPos, bg:ws.bg||ws.color, you:(M.winnerSeat===mySeat), earned:(M.coins[forId]||0) }; }
         return v;
       }
       const prop=proposer(); const gs=guessers();
@@ -304,6 +330,10 @@ SJ.room = (function(){
       else if(type==='piguess') net.send({t:'piguess', text:payload.text});
       else if(type==='ttword') net.send({t:'ttword', word:payload.word});
       else if(type==='ttinput') net.send({t:'ttinput', text:payload.text});
+      else if(type==='soloplay') net.send({t:'soloplay', i:payload.i});
+      else if(type==='solodraw') net.send({t:'solodraw'});
+      else if(type==='solocolor') net.send({t:'solocolor', c:payload.c});
+      else if(type==='solosolo') net.send({t:'solosolo'});
       return;
     }
     // host / solo
@@ -332,12 +362,17 @@ SJ.room = (function(){
     else if(type==='ttword'){ if(M&&M.gameType==='tictacmot') ttSubmit(myId, payload.word); }
     else if(type==='ttinput'){ if(M&&M.gameType==='tictacmot'&&phase==='ttplay'&&M.holder===myId&&net) net.broadcast({t:'ttinput',text:payload.text}); }
     else if(type==='ttagain'){ if(M&&M.gameType==='tictacmot') ttStart(); }
+    else if(type==='soloplay'){ if(M&&M.gameType==='solo') soloPlay(myId, payload.i); }
+    else if(type==='solodraw'){ if(M&&M.gameType==='solo') soloDraw(myId); }
+    else if(type==='solocolor'){ if(M&&M.gameType==='solo') soloChooseColor(myId, payload.c); }
+    else if(type==='solosolo'){ if(M&&M.gameType==='solo') soloCallSolo(myId); }
+    else if(type==='soloagain'){ if(M&&M.gameType==='solo') soloAgain(); }
     else if(type==='next'){ mClear(); nextRound(); }
     else if(type==='restart'){ hostStart(M?M.gameType:'wavelength'); }
     else if(type==='tosalon'){ if(role==='guest'){ if(net) net.send({t:'tosalon'}); } else toSalon(); }   // retour au menu (n'importe qui peut, ça NE casse PAS le salon)
   }
 
-  function leave(){ if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; } showMenuBtn(false); try{ if(net){ if(role==='guest') net.send({t:'leave'}); net.leave(); } }catch(e){} net=null; role='solo'; M=null; phase='lobby'; }
+  function leave(){ if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; } if(soloTimer){ clearTimeout(soloTimer); soloTimer=null; } showMenuBtn(false); try{ if(net){ if(role==='guest') net.send({t:'leave'}); net.leave(); } }catch(e){} net=null; role='solo'; M=null; phase='lobby'; }
   function quitToHome(){ leave(); SJ.screens.home(); }
   // retour au menu des jeux (salon) SANS couper le lobby — déclenché par n'importe qui
   function toSalon(){ if(role==='guest') return; if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; } mClear(); M=null; phase='lobby'; curKey=null; salonWinner=null; salonSpinning=false; coinsClaimed=false; players.forEach(p=>{ p.vote=null; }); hostRefresh(); }
@@ -356,6 +391,7 @@ SJ.room = (function(){
     if(v.phase==='ucvote'){ if(same) patchUcProg(v); else { curKey=key; rUcVote(v); } return; }
     if(v.phase==='pidraw'){ if(same) patchPi(v); else { curKey=key; rPiDraw(v); } return; }   // jamais de full re-render : préserve le canvas
     if(v.phase==='ttplay'){ curKey=key; rTtPlay(v); return; }   // re-render à chaque passage ; la mèche s'anime via {t:'fuse'}
+    if(v.phase==='soloplay'){ curKey=key; rSolo(v); return; }   // re-render à chaque coup
     if(same) return;                 // propose / reveal / podium / pb : re-render seulement au changement d'état
     curKey=key;
     if(v.phase==='propose') rPropose(v);
@@ -388,8 +424,8 @@ SJ.room = (function(){
       </div>`).join('');
     const avatarP = SJ.ui.myAvatarProfile();
     const actionsInner = host
-      ? `<div class="row gap8" style="width:100%"><button class="btn btn--yellow grow" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Hasard'}</button><button class="btn btn--teal grow" id="launch" ${v.players.length<2?'disabled':''}>${s.winner!=null?"C'est parti ▶":"Lancer ▶"}</button></div>
-         <div class="center sa-hint" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — min. 2 joueurs':"L'hôte lance quand vous êtes prêts"}</div>`
+      ? `<div class="row gap8" style="width:100%"><button class="btn btn--yellow grow" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Hasard'}</button><button class="btn btn--teal grow" id="launch" ${s.canLaunch?'':'disabled'}>${s.winner!=null?"C'est parti ▶":"Lancer ▶"}</button></div>
+         <div class="center sa-hint" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — min. 2 (ou joue à Solo ! tout seul)':"L'hôte lance quand vous êtes prêts"}</div>`
       : `<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ l'hôte lance la partie…</div>`;
     const settingsPanel = host ? `<div class="salon-cfg-wrap" id="cfgwrap">
         <div class="card salon-cfg" style="display:flex;flex-direction:column;gap:10px;box-shadow:0 9px 0 #C9BBE8">
@@ -475,7 +511,7 @@ SJ.room = (function(){
     const pc=app().querySelector('#salon-pcount'); if(pc) pc.textContent=v.players.length;
     const stt=app().querySelector('#salon-stt'); if(stt) stt.textContent=s.status.title;
     const sts=app().querySelector('#salon-sts'); if(sts) sts.textContent=s.status.sub;
-    const lb=app().querySelector('#launch'); if(lb){ lb.disabled=v.players.length<2; lb.textContent=(s.winner!=null?"C'est parti ▶":"Lancer ▶"); }
+    const lb=app().querySelector('#launch'); if(lb){ lb.disabled=!s.canLaunch; lb.textContent=(s.winner!=null?"C'est parti ▶":"Lancer ▶"); }
     const rb=app().querySelector('#rand'); if(rb) rb.textContent=s.spinning?'🌀 Tirage…':'🎲 Hasard';
   }
   function reenterSalon(){
@@ -499,11 +535,11 @@ SJ.room = (function(){
   }
   function doLaunch(){
     if(salonSpinning) return;
-    if(players.length<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
     let target=salonWinner;
     if(target==null){ const counts=SJ.GAMES.map((_,i)=>players.filter(p=>p.vote===i).length); let lead=0; counts.forEach((c,i)=>{ if(c>counts[lead]) lead=i; }); target = counts[lead]>0?lead:0; }
     const g=SJ.GAMES[target];
     if(!g.playable){ U().toast(`🚧 ${g.name} arrive bientôt ! Choisis un jeu jouable 🎯`); return; }
+    if(g.id!=='solo' && players.length<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }   // Solo : jouable seul (bots)
     hostStart(g.id);
   }
   function renderDurs(){ const e=document.getElementById('durs'); if(!e)return; e.innerHTML=SJ.DURATIONS.map(d=>`<div class="dur" data-id="${d.id}" style="flex:1;text-align:center;font-weight:${d.id===settings.durationId?800:700};border:3px solid #3B2D5E;border-radius:12px;padding:8px 0;cursor:pointer;background:${d.id===settings.durationId?'#9B5DE5':'#fff'};color:${d.id===settings.durationId?'#fff':'#3B2D5E'};box-shadow:${d.id===settings.durationId?'0 4px 0 #6E3CB0':'none'}">${d.label}<br><span style="font-size:13px;opacity:.85">${d.rounds} tours</span></div>`).join('');
@@ -1320,6 +1356,118 @@ SJ.room = (function(){
     if(o.iWon){ SJ.audio.win(); U().confetti(60); } else { SJ.audio.lose&&SJ.audio.lose(); U().confetti(16); }
     if(!coinsClaimed){ SJ.store.addCoins(o.earned||0); coinsClaimed=true; }
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('ttagain'); };
+  }
+
+  /* ================= SOLO ! (jeu de cartes type UNO, humains + bots) ================= */
+  const SOLO_BOTS=[{name:'Tom',emoji:'🐸',color:'#2EC4B6'},{name:'Mia',emoji:'🦊',color:'#FF8FA3'},{name:'Noé',emoji:'👾',color:'#4D96FF'},{name:'Zoé',emoji:'🐱',color:'#9B5DE5'}];
+  function clearSolo(){ if(soloTimer){ clearTimeout(soloTimer); soloTimer=null; } }
+  function soloSeatOf(id){ return M.seats.findIndex(s=>s.id===id); }
+  function soloCount(i){ const s=M.seats[i]; return s.bot ? (M.count[i]||0) : (M.cards[i]?M.cards[i].length:0); }
+  function soloStep(turn,steps){ const n=M.seats.length; return (((turn+M.dir*steps)%n)+n)%n; }
+  function soloGive(i,n){ if(M.seats[i].bot){ M.count[i]=(M.count[i]||0)+n; } else { for(let k=0;k<n;k++) M.cards[i].push(SJ.SOLO.randCard()); } }
+  function soloDeal(){ M.cards={}; M.count={}; M.seats.forEach((s,i)=>{ if(s.bot){ M.count[i]=7; } else { M.cards[i]=[]; for(let k=0;k<7;k++) M.cards[i].push(SJ.SOLO.randCard()); } }); }
+  function soloStart(){
+    players.forEach(p=>p.score=0);
+    const seats=players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,color:p.color,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,bot:false}));
+    let bi=0; while(seats.length<4 && bi<SOLO_BOTS.length){ const b=SOLO_BOTS[bi++]; seats.push({id:'sbot'+bi,name:b.name,emoji:b.emoji,color:b.color,bot:true}); }
+    M={ gameType:'solo', seats, cards:{}, count:{}, top:SJ.SOLO.startCard(), activeColor:'R', turn:0, dir:1, needColor:false, needColorSeat:-1, pendingWild:null, message:'À toi de jouer 👇', round:1, winnerSeat:-1, coins:{} };
+    M.activeColor=M.top.color; soloDeal(); seats.forEach(s=>{ M.coins[s.id]=0; });
+    coinsClaimed=false; phase='soloplay'; curKey=null; SJ.audio.pop(); U().confetti(12); hostRefresh(); scheduleSoloAI();
+  }
+  function soloAgain(){ clearSolo(); M.round=(M.round||1)+1; M.winnerSeat=-1; M.needColor=false; M.needColorSeat=-1; M.pendingWild=null; M.dir=1; M.turn=0; M.top=SJ.SOLO.startCard(); M.activeColor=M.top.color; soloDeal(); M.message='Nouvelle donne 🎴'; coinsClaimed=false; curKey=null; hostRefresh(); scheduleSoloAI(); }
+  function soloResolve(card){ M.top=card; if(card.color!=='W') M.activeColor=card.color; let skip=false;
+    if(card.val==='rev'){ M.dir=-M.dir; if(M.seats.length===2) skip=true; }
+    else if(card.val==='skip'){ skip=true; }
+    else if(card.val==='+2'){ skip=true; soloGive(soloStep(M.turn,1),2); }
+    else if(card.val==='+4'){ skip=true; soloGive(soloStep(M.turn,1),4); }
+    M.turn=soloStep(M.turn, skip?2:1); }
+  function soloWin(seat){ clearSolo(); M.winnerSeat=seat; M.message='';
+    M.seats.forEach((s,i)=>{ if(!s.bot){ const win=(i===seat); M.coins[s.id]=(M.coins[s.id]||0)+(win?15:3); const p=players.find(x=>x.id===s.id); if(p&&win) p.score+=1; } });
+    curKey=null; hostRefresh(); }
+  function soloAfter(seat){ if(soloCount(seat)===0){ soloWin(seat); return; } curKey=null; hostRefresh(); scheduleSoloAI(); }
+  function scheduleSoloAI(){ clearSolo(); if(!M||phase!=='soloplay'||M.winnerSeat>=0||M.needColor) return;
+    if(M.seats[M.turn].bot){ soloTimer=setTimeout(()=>{ soloTimer=null; soloAImove(); }, 1000); }
+    else { soloTimer=setTimeout(()=>{ soloTimer=null; soloAutoDraw(M.turn); }, 40000); } }
+  function soloAImove(){ if(!M||phase!=='soloplay'||M.winnerSeat>=0||M.needColor) return; const t=M.turn; if(!M.seats[t].bot) return;
+    if((M.count[t]||0)>0 && Math.random()<0.82){ const card=SJ.SOLO.aiCard(M.activeColor); M.count[t]-=1;
+      if(card.color==='W') M.activeColor=SJ.SOLO.COLORS[Math.floor(Math.random()*4)];
+      soloResolve(card); const extra=card.color==='W'?' ('+SJ.SOLO.CMAP[M.activeColor].name+')':'';
+      M.message=M.seats[t].name+' pose '+SJ.SOLO.label(card)+extra;
+      if(M.count[t]===0){ soloWin(t); return; } if(M.count[t]===1) M.message=M.seats[t].name+' crie SOLO ! 🔔';
+    } else { M.count[t]=(M.count[t]||0)+1; M.message=M.seats[t].name+' pioche 🃏'; M.turn=soloStep(M.turn,1); }
+    curKey=null; hostRefresh(); scheduleSoloAI(); }
+  function soloAutoDraw(seat){ if(!M||phase!=='soloplay'||M.turn!==seat||M.seats[seat].bot||M.winnerSeat>=0) return;
+    M.cards[seat].push(SJ.SOLO.randCard()); M.message=M.seats[seat].name+' pioche (temps écoulé) 🃏'; M.turn=soloStep(M.turn,1); curKey=null; hostRefresh(); scheduleSoloAI(); }
+  function soloPlay(id, idx){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return;
+    const seat=soloSeatOf(id); if(seat<0||seat!==M.turn) return; const hand=M.cards[seat]; if(!hand||idx<0||idx>=hand.length) return;
+    const card=hand[idx]; if(!(card.color==='W'||card.color===M.activeColor||card.val===M.top.val)) return;
+    clearSolo(); hand.splice(idx,1);
+    if(card.color==='W'){ M.top=card; M.needColor=true; M.needColorSeat=seat; M.pendingWild=card; M.message=M.seats[seat].name+' choisit une couleur 🌈'; curKey=null; hostRefresh(); return; }
+    soloResolve(card); M.message=(seat===0||!M.seats[seat].bot?'Tu poses ':M.seats[seat].name+' pose ')+SJ.SOLO.label(card);
+    if(hand.length===1) M.message=M.seats[seat].name+' — plus qu\'une carte, SOLO ! 🔔';
+    soloAfter(seat); }
+  function soloDraw(id){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.turn||M.seats[seat].bot) return;
+    clearSolo(); M.cards[seat].push(SJ.SOLO.randCard()); M.message='Tu pioches 🃏'; M.turn=soloStep(M.turn,1); curKey=null; hostRefresh(); scheduleSoloAI(); }
+  function soloChooseColor(id, c){ if(phase!=='soloplay'||!M||!M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.needColorSeat) return; if(SJ.SOLO.COLORS.indexOf(c)<0) return;
+    clearSolo(); M.activeColor=c; const card=M.pendingWild; soloResolve(card); M.needColor=false; M.needColorSeat=-1; M.pendingWild=null;
+    M.message='Joker → '+SJ.SOLO.CMAP[c].name; soloAfter(seat); }
+  function soloCallSolo(id){ if(!M||M.winnerSeat>=0) return; const seat=soloSeatOf(id); if(seat<0) return;
+    if(soloCount(seat)===1){ M.message='🔔 '+(seat===0||!M.seats[seat].bot? (M.seats[seat].id===myId?'Tu cries':M.seats[seat].name+' crie') : M.seats[seat].name+' crie')+' SOLO !'; curKey=null; hostRefresh(); } else U().toast('Crie SOLO quand il te reste 1 carte 🙂'); }
+
+  function rSolo(v){ const s=v.solo;
+    const ringHTML=s.ring.map(pl=>`<div style="position:absolute;top:${pl.top};left:${pl.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;width:84px">
+        <div style="position:relative;display:flex;align-items:center;justify-content:center">
+          <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(-14deg) translateX(-7px)"></div>
+          <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(14deg) translateX(7px)"></div>
+          <div style="width:54px;height:54px;border-radius:50%;border:4px solid ${pl.isTurn?'#FFC93C':'#3B2D5E'};background:${pl.isTurn?'#FFF1C9':'#fff'};display:flex;align-items:center;justify-content:center;z-index:1;${pl.isTurn?'animation:turnring 1s ease-in-out infinite;':''}">${U().ava({avatar:pl.avatar,emoji:pl.emoji,hat:pl.hat,hatPos:pl.hatPos,bg:pl.bg},44)}</div>
+          ${pl.solo?'<div class="pop" style="position:absolute;top:-12px;right:-14px;background:#FFC93C;border:2px solid #3B2D5E;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;z-index:2">SOLO!</div>':''}
+        </div>
+        <div style="font-size:14px;font-weight:800;color:${pl.isTurn?'#FFF1C9':'#fff'};text-shadow:0 1px 2px rgba(0,0,0,.4);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
+        <div style="background:rgba(0,0,0,.28);border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:1px 11px;font-size:13px;font-weight:800;color:#fff">🂠 ${pl.count}</div>
+      </div>`).join('');
+    const handHTML=s.hand.map(c=>`<button class="solocard" data-i="${c.i}" ${c.playable?'':'disabled'} style="position:relative;width:56px;height:84px;border-radius:12px;border:3px solid #3B2D5E;background:${c.bg};transform:translateY(${c.playable?'-12px':'0'});opacity:${s.myTurn?(c.playable?'1':'.55'):'.85'};box-shadow:${c.playable?'0 0 0 4px rgba(255,201,60,.55),0 9px 0 rgba(0,0,0,.3)':'0 5px 0 rgba(0,0,0,.3)'};cursor:${c.playable?'pointer':'default'};transition:transform .12s ease;font-family:inherit;flex:none">
+        <div style="position:absolute;inset:13px 7px;border-radius:50% / 40%;background:rgba(255,255,255,.92)"></div>
+        <div style="position:relative;font-size:24px;font-weight:800;color:${c.ink}">${esc(c.sym)}</div>
+        <div style="position:absolute;top:3px;left:5px;font-size:11px;font-weight:800;color:${c.corner}">${esc(c.sym)}</div>
+        <div style="position:absolute;bottom:3px;right:5px;font-size:11px;font-weight:800;color:${c.corner}">${esc(c.sym)}</div></button>`).join('');
+    const colorPicker = s.needColor ? `<div style="position:absolute;inset:0;background:rgba(31,22,56,.72);display:flex;align-items:center;justify-content:center;z-index:5;border-radius:27px">
+        <div style="background:#FFF8EC;border:3px solid #3B2D5E;border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:14px;align-items:center;box-shadow:0 10px 0 rgba(0,0,0,.3)">
+          <div style="font-size:22px;font-weight:800">🌈 Choisis une couleur</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${s.colorChoices.map(cc=>`<button class="solocol" data-c="${cc.c}" style="width:82px;height:82px;border-radius:18px;border:3px solid #3B2D5E;background:${cc.hex};box-shadow:0 6px 0 ${cc.shadow};cursor:pointer;font-size:16px;font-weight:800;color:${cc.ink};font-family:inherit">${esc(cc.name)}</button>`).join('')}</div>
+        </div></div>` : '';
+    const winnerOv = s.winner ? `<div style="position:absolute;inset:0;background:rgba(31,22,56,.8);display:flex;align-items:center;justify-content:center;z-index:6;border-radius:27px;padding:14px">
+        <div style="background:#fff;border:3px solid #3B2D5E;border-radius:28px;padding:26px;display:flex;flex-direction:column;gap:13px;align-items:center;text-align:center;box-shadow:0 12px 0 #FFC93C;max-width:330px">
+          <div style="position:relative;width:104px;height:104px"><div style="position:absolute;inset:0;border-radius:50%;border:4px solid #3B2D5E;background:#FFF1C9;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 0 #E8C766;animation:floaty 1.6s ease-in-out infinite">${U().ava({avatar:s.winner.avatar,emoji:s.winner.emoji,hat:s.winner.hat,hatPos:s.winner.hatPos,bg:s.winner.bg},84)}</div><div class="pop" style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:36px">👑</div></div>
+          <div style="font-size:27px;font-weight:800">${s.winner.you?'Tu gagnes !':esc(s.winner.name)+' gagne !'}</div>
+          <div style="font-size:16px;font-weight:700;color:#7A6BA8">Plus une seule carte 🎉</div>
+          <span class="pill paper" style="font-size:16px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${s.winner.earned||0} 🪙</span>
+          ${v.iAmHost?'<button class="btn btn--coral block" id="soloagain">🔁 Rejouer</button>':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
+        </div></div>` : '';
+    mMount(`<section class="screen"><div class="stage" style="max-width:560px">
+      <div style="position:relative;background:radial-gradient(circle at 50% 42%,#2EC4B6 0%,#1E8B81 100%);border:3px solid #3B2D5E;border-radius:30px;box-shadow:0 10px 0 #176258;padding:clamp(14px,3vw,24px);display:flex;flex-direction:column;gap:13px;overflow:hidden;width:100%">
+        <div class="row between wrap" style="gap:10px">
+          <span style="background:rgba(0,0,0,.22);border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:4px 14px;font-size:15px;font-weight:800;color:#fff">🎴 Manche ${s.round}</span>
+          <div class="row gap6"><span style="display:flex;align-items:center;gap:7px;background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 12px 3px 7px;font-size:13px;font-weight:800;color:#7A6BA8">couleur<span style="width:22px;height:22px;border-radius:50%;border:2px solid #3B2D5E;background:${s.activeColorHex}"></span></span><span style="background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 12px;font-size:16px;font-weight:800">${s.dir===1?'↻':'↺'}</span></div>
+        </div>
+        <div style="position:relative;width:min(420px,86vw);height:min(420px,86vw);margin:2px auto 0">
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px">
+            <div id="solodraw" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:${s.myTurn?'pointer':'default'}"><div style="position:relative;width:56px;height:84px"><div style="position:absolute;inset:0;transform:translate(4px,4px);border-radius:12px;border:3px solid #3B2D5E;background:#4A2E9E"></div><div style="position:absolute;inset:0;border-radius:12px;border:3px solid #3B2D5E;background:linear-gradient(135deg,#6A4BD6,#9B5DE5);display:flex;align-items:center;justify-content:center;${s.myTurn?'box-shadow:0 0 0 4px rgba(255,201,60,.5)':''}"><div style="font-family:Caveat,cursive;font-size:20px;font-weight:700;color:#fff;transform:rotate(-12deg)">SOLO</div></div></div><div style="font-size:12px;font-weight:800;color:#fff">Pioche</div></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:5px"><div style="position:relative;width:64px;height:96px;border-radius:14px;border:3px solid #3B2D5E;background:${s.top.bg};box-shadow:0 6px 0 rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;transform:rotate(-5deg)"><div style="position:absolute;inset:15px 9px;border-radius:50% / 40%;background:rgba(255,255,255,.92)"></div><div style="position:relative;font-size:30px;font-weight:800;color:${s.top.ink}">${esc(s.top.sym)}</div><div style="position:absolute;top:5px;left:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div><div style="position:absolute;bottom:5px;right:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div></div><div style="font-size:12px;font-weight:800;color:#fff">Tas</div></div>
+          </div>${ringHTML}
+        </div>
+        <div style="min-height:24px;text-align:center;font-size:16px;font-weight:800;color:#fff">${esc(s.message||'')}</div>
+        <div style="background:rgba(0,0,0,.18);border:2px solid rgba(255,255,255,.3);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:10px">
+          <div class="row between wrap" style="gap:10px"><span style="font-size:16px;font-weight:800;color:#fff">Ta main · ${s.handCount} carte${s.handCount>1?'s':''}</span><button id="solocall" style="display:flex;align-items:center;gap:6px;background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 16px;font-size:16px;font-weight:800;box-shadow:0 5px 0 #D9A416;cursor:pointer;font-family:inherit">🔔 SOLO !</button></div>
+          <div class="row" style="align-items:flex-end;justify-content:center;gap:7px;flex-wrap:wrap;min-height:90px">${handHTML||'<span style="color:rgba(255,255,255,.7);font-weight:700">tu regardes la partie 👀</span>'}</div>
+        </div>
+        ${colorPicker}${winnerOv}
+      </div></div></section>`);
+    if(s.myTurn){ const dr=$('#solodraw'); if(dr) dr.onclick=()=>{ SJ.audio.click(); act('solodraw'); }; }
+    app().querySelectorAll('.solocard').forEach(b=> b.onclick=()=>{ if(b.disabled) return; SJ.audio.pop(); act('soloplay',{i:+b.dataset.i}); });
+    app().querySelectorAll('.solocol').forEach(b=> b.onclick=()=>{ SJ.audio.click(); act('solocolor',{c:b.dataset.c}); });
+    const sc=$('#solocall'); if(sc) sc.onclick=()=>{ SJ.audio.coin&&SJ.audio.coin(); act('solosolo'); };
+    const ag=$('#soloagain'); if(ag) ag.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('soloagain'); };
+    if(s.winner && !coinsClaimed){ SJ.store.addCoins(s.winner.earned||0); coinsClaimed=true; if(s.winner.you){ SJ.audio.win(); U().confetti(50); } else { SJ.audio.lose&&SJ.audio.lose(); } }
   }
 
   (function(){ const b=document.getElementById('gomenu'); if(b) b.onclick=()=>{ SJ.audio.click(); act('tosalon'); }; })();
