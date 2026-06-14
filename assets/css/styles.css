@@ -160,6 +160,13 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
 .tool.active{background:var(--purple); color:#fff}
 .tmpl{aspect-ratio:1; border:2px solid var(--ink); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:22px; cursor:pointer; transition:transform .08s}
 .tmpl:active{transform:scale(.9)}
+/* ---- éditeur avatar : toggle dessin/chapeau + sliders ---- */
+.seg{display:inline-flex; border:3px solid var(--ink); border-radius:14px; overflow:hidden; background:#fff; box-shadow:0 4px 0 var(--ink-ghost)}
+.seg-btn{appearance:none; border:none; background:transparent; font-family:inherit; font-weight:800; font-size:15px; color:var(--ink); padding:8px 16px; cursor:pointer}
+.seg-btn.active{background:var(--purple); color:#fff}
+.rng{ -webkit-appearance:none; appearance:none; height:14px; border:3px solid var(--ink); border-radius:999px; background:#fff; outline:none; cursor:pointer; padding:0 }
+.rng::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:26px; height:26px; border-radius:50%; background:var(--purple); border:3px solid var(--ink); box-shadow:0 3px 0 var(--purple-d); cursor:grab }
+.rng::-moz-range-thumb{ width:24px; height:24px; border-radius:50%; background:var(--purple); border:3px solid var(--ink); cursor:grab }
 
 /* ---------- top bar (game) ---------- */
 .topbar{display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; flex-wrap:wrap}

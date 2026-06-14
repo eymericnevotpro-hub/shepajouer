@@ -102,17 +102,31 @@ SJ.screens = (function(){
     opts=opts||{}; const done=()=>(opts.then?opts.then():home());
     mount(`
       <section class="screen">
-        <div class="stage" style="max-width:600px">
-          <div class="row"><span class="badge" style="background:#FFC93C;color:#3B2D5E;box-shadow:0 3px 0 #D9A416;transform:rotate(2deg)">02</span><h2 style="font-size:24px">Dessine ta tête</h2></div>
+        <div class="stage" style="max-width:620px">
+          <div class="row"><span class="badge" style="background:#FFC93C;color:#3B2D5E;box-shadow:0 3px 0 #D9A416;transform:rotate(2deg)">02</span><h2 style="font-size:24px">Crée ta tête</h2></div>
           <div class="card sh-yellow" style="display:flex;gap:22px;flex-wrap:wrap;justify-content:center">
-            <div class="col" style="gap:14px;align-items:center;flex:1;min-width:260px">
+            <div class="col" style="gap:12px;align-items:center;flex:1;min-width:270px">
               <div id="pad" style="position:relative;line-height:0"></div>
-              <div class="row wrap gap6" style="justify-content:center" id="tools"></div>
-              <div class="row wrap gap6" style="justify-content:center;align-items:center" id="hatbar"></div>
-              <div class="caveat" style="font-size:16px">↳ glisse le chapeau pour le placer (il peut dépasser !)</div>
+              <div class="seg" id="mode">
+                <button class="seg-btn active" data-m="draw" type="button">✏️ Dessiner</button>
+                <button class="seg-btn" data-m="hat" type="button">🎩 Chapeau</button>
+              </div>
+              <!-- outils DESSIN -->
+              <div id="tools-draw" class="col" style="gap:11px;width:100%;align-items:center">
+                <div class="row wrap gap6" style="justify-content:center" id="swatches"></div>
+                <div class="row" style="gap:11px;align-items:center;width:100%;max-width:300px"><span style="font-size:19px">✏️</span><input type="range" id="brush" class="rng" min="2" max="42" value="12" style="flex:1"><span style="flex:none;width:46px;height:46px;display:flex;align-items:center;justify-content:center"><span id="brushdot" style="border-radius:50%;background:#3B2D5E;display:block"></span></span></div>
+                <div class="row gap6" style="justify-content:center"><button class="tool" id="undo" type="button" style="width:auto;padding:0 12px;font-size:14px">↩︎ annuler</button><button class="tool" id="clr" type="button" style="width:auto;padding:0 12px;font-size:14px">🗑 effacer</button></div>
+              </div>
+              <!-- outils CHAPEAU -->
+              <div id="tools-hat" class="col" style="gap:11px;width:100%;align-items:center;display:none">
+                <div class="row wrap gap6" style="justify-content:center;align-items:center" id="hats"></div>
+                <div class="row" style="gap:10px;align-items:center;width:100%;max-width:300px"><span style="font-size:14px;font-weight:700;min-width:54px">↔️ taille</span><input type="range" id="hsize" class="rng" min="25" max="145" value="66" style="flex:1"></div>
+                <div class="row" style="gap:10px;align-items:center;width:100%;max-width:300px"><span style="font-size:14px;font-weight:700;min-width:54px">🔄 angle</span><input type="range" id="hrot" class="rng" min="-180" max="180" value="0" style="flex:1"></div>
+                <div class="caveat" id="hathint" style="font-size:15px">glisse le chapeau sur ta tête 🎩 (il peut dépasser !)</div>
+              </div>
             </div>
             <div class="col" style="gap:12px;width:170px;min-width:160px">
-              <div style="font-size:17px;font-weight:700">Ou pars d'un modèle :</div>
+              <div style="font-size:16px;font-weight:700">Ou pars d'un modèle :</div>
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="tmpls"></div>
               <div class="grow"></div>
               <button class="btn btn--teal block" id="save">C'est moi ✓</button>
@@ -123,57 +137,65 @@ SJ.screens = (function(){
       </section>`);
     const pad = SJ.avatar.makePad({size:250});
     $('#pad').appendChild(pad.canvas);
-    // si on revient modifier un avatar DÉJÀ dessiné, on le recharge sur le pad
     const savedAv = S.get('avatar');
-    if(savedAv && savedAv.type==='draw' && savedAv.value){ pad.loadDataURL(savedAv.value); }
-    // outils : couleurs + tailles + undo
-    const tools=$('#tools');
+    if(savedAv && savedAv.type==='draw' && savedAv.value){ pad.loadDataURL(savedAv.value); }   // recharge le dessin existant
+
+    // ---- couleurs ----
+    const sw=$('#swatches');
     SJ.AVATAR.palette.forEach((c,i)=>{ const d=document.createElement('div'); d.className='swatch'+(i===0?' active':''); d.style.background=c; d.title=c;
-      d.onclick=()=>{ pad.setColor(c); tools.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active')); d.classList.add('active'); SJ.audio.click(); }; tools.appendChild(d); });
-    const div1=document.createElement('div'); div1.className='divider'; tools.appendChild(div1);
-    SJ.AVATAR.sizes.forEach((s,i)=>{ const b=document.createElement('div'); b.className='tool'+(i===1?' active':''); b.textContent=s.k; b.style.fontSize=(11+i*4)+'px';
-      b.onclick=()=>{ pad.setBrush(s.w); tools.querySelectorAll('.tool').forEach(x=>x.classList.remove('active')); b.classList.add('active'); }; tools.appendChild(b); });
-    const div2=document.createElement('div'); div2.className='divider'; tools.appendChild(div2);
-    const undo=document.createElement('div'); undo.className='tool'; undo.style.width='auto'; undo.style.padding='0 10px'; undo.textContent='↩︎ oups'; undo.onclick=()=>pad.undo(); tools.appendChild(undo);
-    const clr=document.createElement('div'); clr.className='tool'; clr.style.width='auto'; clr.style.padding='0 10px'; clr.textContent='🗑'; clr.onclick=()=>{pad.clear();SJ.audio.click();}; tools.appendChild(clr);
-    // modèles
+      d.onclick=()=>{ pad.setColor(c); sw.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active')); d.classList.add('active'); SJ.audio.click(); }; sw.appendChild(d); });
+    // ---- taille du crayon : slider + aperçu en direct ----
+    const brush=$('#brush'), dot=$('#brushdot');
+    const setBrush=(w)=>{ pad.setBrush(w); const d=Math.max(4,Math.min(34,w)); dot.style.width=d+'px'; dot.style.height=d+'px'; };
+    brush.oninput=()=>{ setBrush(+brush.value); SJ.audio.tick(); }; setBrush(12);
+    $('#undo').onclick=()=>{ pad.undo(); };
+    $('#clr').onclick=()=>{ pad.clear(); SJ.audio.click(); };
+    // ---- modèles ----
     const tg=$('#tmpls'); let chosen=null;
     SJ.AVATAR.templates.slice(0,5).forEach((e,i)=>{ const d=document.createElement('div'); d.className='tmpl'; d.style.background=['#FFE3E8','#FFF1C9','#E4F8F6','#EAF2FF','#F4EFFF'][i%5]; d.textContent=e;
       d.onclick=()=>{ pad.template(e); chosen=e; }; tg.appendChild(d); });
     const add=document.createElement('div'); add.className='tmpl'; add.style.border='2px dashed #A99CC9'; add.style.color='#A99CC9'; add.textContent='+';
     add.onclick=()=>{ const e=SJ.AVATAR.templates[5+Math.floor(Math.random()*5)]; pad.template(e); chosen=e; }; tg.appendChild(add);
 
-    // ---- placement du chapeau (glisser / taille / rotation) ----
-    const padEl=$('#pad'); let hp=Object.assign({x:0,y:-0.72,s:0.66,r:0}, S.get('equipped').hatPos||{}); let handle=null;
+    // ---- chapeau : glisser (position) + sliders (taille / angle) ----
+    const padEl=$('#pad'); let hp=Object.assign({x:0,y:-0.72,s:0.66,r:0}, S.get('equipped').hatPos||{}); let handle=null; let mode='draw';
     const hatGlyph=()=>{ const id=S.get('equipped').hat; const it=id?SJ.shopItem(id):null; return it?it.glyph:''; };
     const clampN=v=>Math.max(-1.45,Math.min(1.45,v));
     function placeHandle(){ if(!handle) return; const r=padEl.getBoundingClientRect(); const px=r.width||250;
       handle.style.left=(50+hp.x*50)+'%'; handle.style.top=(50+hp.y*50)+'%'; handle.style.fontSize=(hp.s*px)+'px'; handle.style.transform=`translate(-50%,-50%) rotate(${hp.r}deg)`; }
     function saveHat(){ S.equip('hatPos',{x:+hp.x.toFixed(3),y:+hp.y.toFixed(3),s:+hp.s.toFixed(3),r:hp.r}); }
-    function renderHandle(){ if(handle){handle.remove();handle=null;} const g=hatGlyph(); if(!g) return;
+    function applyMode(){ const drawing=mode==='draw';
+      pad.canvas.style.pointerEvents = drawing?'auto':'none';                 // en mode chapeau, on ne dessine pas
+      if(handle){ handle.style.pointerEvents = drawing?'none':'auto'; handle.style.opacity = drawing?'.8':'1'; }  // en mode dessin, on dessine SOUS le chapeau
+      $('#tools-draw').style.display = drawing?'flex':'none';
+      $('#tools-hat').style.display = drawing?'none':'flex';
+      $('#mode').querySelectorAll('.seg-btn').forEach(b=> b.classList.toggle('active', b.dataset.m===mode));
+      const hint=$('#hathint'); if(hint) hint.textContent = hatGlyph()? 'glisse le chapeau sur ta tête 🎩 (il peut dépasser !)' : 'choisis un chapeau ci-dessus 👆';
+    }
+    function renderHandle(){ if(handle){handle.remove();handle=null;} const g=hatGlyph(); if(!g){ applyMode(); return; }
       handle=document.createElement('div'); handle.textContent=g;
       handle.style.cssText='position:absolute;cursor:grab;user-select:none;line-height:1;z-index:3;touch-action:none;filter:drop-shadow(0 2px 0 rgba(0,0,0,.18))';
       padEl.appendChild(handle); placeHandle();
       let drag=false;
-      handle.addEventListener('pointerdown',e=>{ e.preventDefault(); drag=true; handle.style.cursor='grabbing'; try{handle.setPointerCapture(e.pointerId);}catch(_){} SJ.audio.tick(); });
+      handle.addEventListener('pointerdown',e=>{ if(mode!=='hat')return; e.preventDefault(); drag=true; handle.style.cursor='grabbing'; try{handle.setPointerCapture(e.pointerId);}catch(_){} SJ.audio.tick(); });
       handle.addEventListener('pointermove',e=>{ if(!drag)return; e.preventDefault(); const r=padEl.getBoundingClientRect(); hp.x=clampN((e.clientX-r.left)/r.width*2-1); hp.y=clampN((e.clientY-r.top)/r.height*2-1); placeHandle(); });
       handle.addEventListener('pointerup',()=>{ if(!drag)return; drag=false; handle.style.cursor='grab'; saveHat(); });
+      applyMode();
     }
-    function renderHatBar(){ const bar=$('#hatbar'); const eqHat=S.get('equipped').hat;
-      const owned=S.get('owned').filter(id=>id.indexOf('hat-')===0);
-      let html='<span class="muted" style="font-size:14px;font-weight:700">🎩</span>';
-      html+=`<div class="tmpl" data-hat="" style="background:${eqHat?'#fff':'#FFC93C'};font-size:12px;width:auto;height:30px;padding:0 8px">aucun</div>`;
-      owned.forEach(id=>{ const it=SJ.shopItem(id); if(it) html+=`<div class="tmpl" data-hat="${id}" style="background:${eqHat===id?'#FFC93C':'#fff'};font-size:18px">${it.glyph}</div>`; });
-      html+='<span class="divider"></span><div class="tool" id="hsm">−</div><div class="tool" id="hsp">+</div><div class="tool" id="hrm">↺</div><div class="tool" id="hrp">↻</div>';
-      bar.innerHTML=html;
-      bar.querySelectorAll('[data-hat]').forEach(x=> x.onclick=()=>{ S.equip('hat', x.dataset.hat||null); SJ.audio.click(); renderHandle(); renderHatBar(); });
-      const adj=(f)=>{ f(); placeHandle(); saveHat(); SJ.audio.tick(); };
-      $('#hsm').onclick=()=>adj(()=>hp.s=Math.max(0.25,hp.s-0.06));
-      $('#hsp').onclick=()=>adj(()=>hp.s=Math.min(1.45,hp.s+0.06));
-      $('#hrm').onclick=()=>adj(()=>hp.r-=15);
-      $('#hrp').onclick=()=>adj(()=>hp.r+=15);
+    function renderHats(){ const wrap=$('#hats'); const eqHat=S.get('equipped').hat; const owned=S.get('owned').filter(id=>id.indexOf('hat-')===0);
+      let html=`<div class="tmpl" data-hat="" style="background:${eqHat?'#fff':'#FFC93C'};font-size:12px;width:auto;height:34px;padding:0 10px;font-weight:800">aucun</div>`;
+      owned.forEach(id=>{ const it=SJ.shopItem(id); if(it) html+=`<div class="tmpl" data-hat="${id}" style="background:${eqHat===id?'#FFC93C':'#fff'};font-size:20px">${it.glyph}</div>`; });
+      wrap.innerHTML=html;
+      wrap.querySelectorAll('[data-hat]').forEach(x=> x.onclick=()=>{ S.equip('hat', x.dataset.hat||null); SJ.audio.click(); renderHandle(); renderHats(); });
     }
-    renderHandle(); renderHatBar();
+    // sliders chapeau
+    const hsize=$('#hsize'), hrot=$('#hrot');
+    hsize.value=Math.round(hp.s*100); hrot.value=Math.round(hp.r);
+    hsize.oninput=()=>{ hp.s=(+hsize.value)/100; placeHandle(); saveHat(); };
+    hrot.oninput=()=>{ hp.r=+hrot.value; placeHandle(); saveHat(); };
+    // toggle dessin / chapeau
+    $('#mode').querySelectorAll('.seg-btn').forEach(b=> b.onclick=()=>{ mode=b.dataset.m; SJ.audio.click(); applyMode(); });
+    renderHats(); renderHandle();
 
     $('#save').onclick=()=>{ if(!pad.isBlank()){ S.set('avatar',{type:'draw',value:pad.toDataURL()}); }
       else if(chosen){ S.set('avatar',{type:'emoji',value:chosen}); }
