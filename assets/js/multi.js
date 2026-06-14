@@ -964,7 +964,7 @@ SJ.room = (function(){
   /* ================= BLUFFE-MOI (UNDERCOVER) ================= */
   function ucAliveList(){ return players.filter(p=>M.alive[p.id]); }
   function ucStart(){
-    if(players.length<3){ U().toast('Bluffe-moi : il faut au moins 3 joueurs 🙂'); return; }
+    if(players.length<3){ U().toast('Undercover : il faut au moins 3 joueurs 🙂'); return; }
     players.forEach(p=>p.score=0);
     const pair=SJ.UNDERCOVER[Math.floor(Math.random()*SJ.UNDERCOVER.length)];
     const swap=Math.random()<0.5; const wCivil=swap?pair.under:pair.civil, wUnder=swap?pair.civil:pair.under;
@@ -1005,7 +1005,7 @@ SJ.room = (function(){
 
   function rUcIntro(v){ const uc=v.uc;
     mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:16px;align-items:stretch;text-align:center">
-      <div class="card sh-pink" style="display:flex;flex-direction:column;gap:8px"><div style="font-size:24px;font-weight:800">🎭 Bluffe-moi</div>
+      <div class="card sh-pink" style="display:flex;flex-direction:column;gap:8px"><div style="font-size:24px;font-weight:800">🎭 Undercover</div>
         <div style="font-size:14px;font-weight:600;color:#3B2D5E">Presque tout le monde a le <b>même mot</b>. Un imposteur en a un <b>différent</b> ! Donne un indice pour prouver que tu connais ton mot… sans aider l'autre 🤫</div></div>
       <div class="card" style="background:#3B2D5E;color:#fff;box-shadow:0 10px 0 #1f1636;display:flex;flex-direction:column;gap:6px;align-items:center;padding:26px">
         <div style="font-size:13px;font-weight:700;color:#C9BBE8;letter-spacing:1px">TON MOT SECRET</div>

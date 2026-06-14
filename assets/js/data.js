@@ -121,9 +121,9 @@ SJ.PLAYER_COLORS = ['#FF5D73','#4D96FF','#2EC4B6','#FFC93C','#9B5DE5','#FF8FA3']
 /* playable:true = jouable maintenant ; les autres = « bientôt » */
 SJ.GAMES = [
   // jouables d'abord
-  { id:'wavelength', name:"Longueur d'onde", icon:'🎯', tagline:'Vise la zone cachée du cadran. Le jeu signature.', time:'15 min', bg:'#9B5DE5', shadow:'#6E3CB0', text:'#FFFFFF', tint:'#EADBFF', rot:'-3deg', playable:true },
-  { id:'draw',  name:'Dessine & devine',  icon:'✏️', tagline:'Choisis un mot, dessine-le, les autres devinent !',   time:'10 min', bg:'#2EC4B6', shadow:'#1E8B81', text:'#FFFFFF', tint:'#D7F4F0', rot:'4deg', playable:true },
-  { id:'bluff', name:'Bluffe-moi',         icon:'🎭', tagline:'Tout le monde a un mot… sauf l’imposteur. Démasque-le !', time:'10 min', bg:'#FF8FA3', shadow:'#D45D75', text:'#3B2D5E', tint:'#FFE1E7', rot:'3deg', playable:true },
+  { id:'wavelength', name:"Le demi-cercle", icon:'🎯', tagline:'Vise la zone cachée du cadran. Le jeu signature.', time:'15 min', bg:'#9B5DE5', shadow:'#6E3CB0', text:'#FFFFFF', tint:'#EADBFF', rot:'-3deg', playable:true },
+  { id:'draw',  name:'Pictionary',  icon:'✏️', tagline:'Choisis un mot, dessine-le, les autres devinent !',   time:'10 min', bg:'#2EC4B6', shadow:'#1E8B81', text:'#FFFFFF', tint:'#D7F4F0', rot:'4deg', playable:true },
+  { id:'bluff', name:'Undercover',         icon:'🎭', tagline:'Tout le monde a un mot… sauf l’imposteur. Démasque-le !', time:'10 min', bg:'#FF8FA3', shadow:'#D45D75', text:'#3B2D5E', tint:'#FFE1E7', rot:'3deg', playable:true },
   { id:'tupreferes', name:'Tu préfères… ?', icon:'🤔', tagline:"Parie le % qui choisira l'option A.",             time:'8 min',  bg:'#FF5D73', shadow:'#C23A50', text:'#FFFFFF', tint:'#FFE1E6', rot:'-2deg', playable:true },
   { id:'partybox',  name:'Party Box',       icon:'📦', tagline:"Plein de mini-jeux qui s'enchaînent de plus en plus vite. 3 vies !", time:'∞', bg:'#6A4BD6', shadow:'#4A2E9E', text:'#FFFFFF', tint:'#EADBFF', rot:'2deg', playable:true },
   { id:'tictacmot', name:'Tic-Tac-Mot',     icon:'💣', tagline:'Trouve un mot avec le bout affiché… avant que la bombe pète !', time:'10 min', bg:'#3B2D5E', shadow:'#1F1638', text:'#FFFFFF', tint:'#EADBFF', rot:'-2deg', playable:true },
