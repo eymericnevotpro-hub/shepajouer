@@ -77,6 +77,8 @@ SJ.room = (function(){
     } else if(m.t==='draw'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&id===piDrawer().id){ piApply(m.segs,m.c,m.w); players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'draw',segs:m.segs,c:m.c,w:m.w}); }); }
     } else if(m.t==='clear'){ if(M&&M.gameType==='pictionary'&&phase==='pidraw'&&id===piDrawer().id){ piClearCanvas(); players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'clear'}); }); }
     } else if(m.t==='ttword'){ if(M&&M.gameType==='tictacmot') ttSubmit(id, m.word);
+    } else if(m.t==='ttinput'){ if(M&&M.gameType==='tictacmot'&&phase==='ttplay'&&id===M.holder){ players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'ttinput',text:m.text}); }); patchTtLive(m.text); }
+    } else if(m.t==='tosalon'){ toSalon();
     } else if(m.t==='leave'){ hostOnLeave(id); }
   }
   function hostOnLeave(id){
@@ -220,7 +222,8 @@ SJ.room = (function(){
           ring:players.map(p=>{ const dead=(M.lives[p.id]||0)<=0; return {name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.color,
             dead, holder:(p.id===M.holder&&!dead), you:(p.id===forId),
             hearts: dead?'💀':('❤️'.repeat(M.lives[p.id]||0)+'🖤'.repeat(Math.max(0,3-(M.lives[p.id]||0)))) }; }) };
-        if(phase==='ttboom'){ const p=players.find(x=>x.id===M.holder); v.tt.boom={ name:M.boomName, emoji:p?p.emoji:'😵', color:p?p.color:'#FF5D73', out:(M.lives[M.holder]||0)<=0,
+        if(phase==='ttboom'){ const p=players.find(x=>x.id===M.holder); v.tt.boom={ name:M.boomName, emoji:p?p.emoji:'😵', color:p?p.color:'#FF5D73', out:(M.lives[M.holder]||0)<=0, you:(M.holder===forId),
+          avatar:p?p.avatar:null, hat:p?p.hat:null, hatPos:p?p.hatPos:null,
           hearts:'❤️'.repeat(M.lives[M.holder]||0)+'🖤'.repeat(Math.max(0,3-(M.lives[M.holder]||0))) }; }
         if(phase==='ttover'){ const w=players.find(x=>x.id===M.winnerId); v.tt.over={ winnerName:w?w.name:'—', winnerEmoji:w?w.emoji:'🏆', winnerColor:w?w.color:'#FFC93C',
           avatar:w?w.avatar:null, hat:w?w.hat:null, hatPos:w?w.hatPos:null, rounds:M.round, earned:(M.coins[forId]||0), iWon:(M.winnerId===forId) }; }
@@ -275,8 +278,14 @@ SJ.room = (function(){
     if(m.t==='flash'){ flashCard(m.hi); return; }
     if(m.t==='draw'){ if(!piIsDrawer) piApply(m.segs,m.c,m.w); return; }
     if(m.t==='clear'){ if(!piIsDrawer) piClearCanvas(); return; }
+    if(m.t==='ttinput'){ patchTtLive(m.text); return; }   // ce que tape le porteur, en direct
   }
   function guestOnClose(){ U().toast('Connexion à l\'hôte perdue'); quitToHome(); }
+  // affiche en direct (lettre par lettre + son) ce que tape le porteur, côté spectateurs
+  let ttLiveLen=0;
+  function patchTtLive(text){ const el=document.getElementById('tt-live'); if(!el) return; const t=String(text||'').toUpperCase();
+    el.innerHTML = t ? esc(t)+'<span style="opacity:.5">▌</span>' : '<span style="opacity:.45;font-weight:700">…</span>';
+    if(t.length>ttLiveLen) SJ.audio.key&&SJ.audio.key(); ttLiveLen=t.length; }
 
   /* ================= ACTIONS ================= */
   function act(type,payload){
@@ -294,6 +303,7 @@ SJ.room = (function(){
       else if(type==='clear') net.send({t:'clear'});
       else if(type==='piguess') net.send({t:'piguess', text:payload.text});
       else if(type==='ttword') net.send({t:'ttword', word:payload.word});
+      else if(type==='ttinput') net.send({t:'ttinput', text:payload.text});
       return;
     }
     // host / solo
@@ -320,17 +330,23 @@ SJ.room = (function(){
     else if(type==='pinext'){ if(M&&M.gameType==='pictionary'&&phase==='pireveal') piNextRound(); }
     else if(type==='ttlight'){ if(M&&M.gameType==='tictacmot'&&phase==='ttplay') ttLight(); }
     else if(type==='ttword'){ if(M&&M.gameType==='tictacmot') ttSubmit(myId, payload.word); }
+    else if(type==='ttinput'){ if(M&&M.gameType==='tictacmot'&&phase==='ttplay'&&M.holder===myId&&net) net.broadcast({t:'ttinput',text:payload.text}); }
     else if(type==='ttagain'){ if(M&&M.gameType==='tictacmot') ttStart(); }
     else if(type==='next'){ mClear(); nextRound(); }
     else if(type==='restart'){ hostStart(M?M.gameType:'wavelength'); }
-    else if(type==='tosalon'){ mClear(); M=null; phase='lobby'; curKey=null; salonWinner=null; salonSpinning=false; coinsClaimed=false; players.forEach(p=>{ p.vote=null; }); hostRefresh(); }   // retour au menu des jeux SANS casser le salon
+    else if(type==='tosalon'){ if(role==='guest'){ if(net) net.send({t:'tosalon'}); } else toSalon(); }   // retour au menu (n'importe qui peut, ça NE casse PAS le salon)
   }
 
-  function leave(){ if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; } try{ if(net){ if(role==='guest') net.send({t:'leave'}); net.leave(); } }catch(e){} net=null; role='solo'; M=null; phase='lobby'; }
+  function leave(){ if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; } showMenuBtn(false); try{ if(net){ if(role==='guest') net.send({t:'leave'}); net.leave(); } }catch(e){} net=null; role='solo'; M=null; phase='lobby'; }
   function quitToHome(){ leave(); SJ.screens.home(); }
+  // retour au menu des jeux (salon) SANS couper le lobby — déclenché par n'importe qui
+  function toSalon(){ if(role==='guest') return; if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; } mClear(); M=null; phase='lobby'; curKey=null; salonWinner=null; salonSpinning=false; coinsClaimed=false; players.forEach(p=>{ p.vote=null; }); hostRefresh(); }
+  // bouton « 🏠 Menu » global affiché pendant une partie (caché au salon / accueil)
+  function showMenuBtn(on){ const b=document.getElementById('gomenu'); if(b) b.style.display = on?'inline-flex':'none'; document.body.classList.toggle('in-game', !!on); }
 
   /* ================= RENDU UNIFIÉ ================= */
   function renderView(v){
+    showMenuBtn(v.phase!=='lobby');   // « 🏠 Menu » visible dès qu'on est en jeu
     const key = `${v.phase}#${v.round||0}#${(v.proposerId&&v.proposerId===v.meId)?'P':'G'}`;
     const same = key===curKey;
     if(v.phase==='lobby'){ if(same) patchSalon(v); else { curKey=key; rLobby(v); } return; }
@@ -688,15 +704,12 @@ SJ.room = (function(){
         ${rk[3]?`<div class="muted" style="font-weight:700">${rk.slice(3).map(p=>`${esc(p.emoji||'🙂')} ${p.you?'Toi':esc(p.name)} · ${p.score}`).join('  ·  ')} — pas loin !</div>`:''}
         <div class="row wrap" style="justify-content:center;gap:12px">
           <span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${pod.earned||0} 🪙 gagnées !</span>
-          ${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button><button class="btn btn--purple" id="menu">🏠 Menu des jeux</button>':''}
-          <button class="btn btn--ghost" id="quit">Quitter</button>
+          ${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button>':''}
         </div>
         ${v.iAmHost?'':'<div class="muted" style="font-size:14px;font-weight:700">en attente que l\'hôte relance…</div>'}
       </div></div></section>`);
     SJ.audio.win(); U().confetti(140);
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('restart'); };
-    const mn=$('#menu'); if(mn) mn.onclick=()=>{ SJ.audio.click(); act('tosalon'); };
-    $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
 
   /* ================= PARTY BOX ================= */
@@ -786,11 +799,9 @@ SJ.room = (function(){
       </div>
       <div class="card sh-teal" style="display:flex;flex-direction:column;gap:9px"><div style="font-size:18px;font-weight:800">👥 Joueurs (${pb.perms.length})</div>${list}</div>
       ${host?`<button class="btn btn--coral lg block" id="go" ${pb.perms.length<2?'disabled':''}>Démarrer la Party Box ▶</button>`:'<div class="center muted" style="font-weight:700">⏳ En attente que l\'hôte démarre…</div>'}
-      <button class="btn btn--ghost sm" id="back" style="align-self:flex-start">← quitter</button>
     </div></section>`);
     $('#mic').onclick=()=>{ if(!mp.mic){ if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){ navigator.mediaDevices.getUserMedia({audio:true}).then(s=>{ micStream=s; SJ.audio.click(); pbPerm(true,mp.cam); }).catch(()=>U().toast('Micro refusé 🔇')); } else U().toast('Micro indisponible'); } else { if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;} pbPerm(false,mp.cam); } };
     $('#cam').onclick=()=>{ SJ.audio.click(); pbPerm(mp.mic,!mp.cam); };
-    $('#back').onclick=()=>{ SJ.audio.click(); quitToHome(); };
     if(host){ const g=$('#go'); if(g) g.onclick=()=>act('pbstart'); }
   }
   function pbHearts(lives){ return lives>0 ? '❤️'.repeat(lives) : '💀'; }
@@ -942,14 +953,12 @@ SJ.room = (function(){
       <div class="center pop" style="font-size:26px;font-weight:800">🏆 ${winner?(winner.you?'Tu gagnes !':esc(winner.name)+' gagne !'):'Fin de la Party Box'}</div>
       <div class="col" style="gap:7px">${rows}</div>
       <div class="center"><span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${o.earned||0} 🪙</span></div>
-      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button><button class="btn btn--purple" id="menu">🏠 Menu des jeux</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
+      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button>':''}</div>
       ${v.iAmHost?'':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
     </div></section>`);
     if(o.iWon){ SJ.audio.win(); U().confetti(60); } else { SJ.audio.lose(); U().confetti(22); }
     if(!coinsClaimed){ SJ.store.addCoins(o.earned||0); coinsClaimed=true; }
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('pbagain'); };
-    const mn=$('#menu'); if(mn) mn.onclick=()=>{ SJ.audio.click(); act('tosalon'); };
-    $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
 
   /* ================= BLUFFE-MOI (UNDERCOVER) ================= */
@@ -1003,10 +1012,8 @@ SJ.room = (function(){
         <div class="pop" style="font-size:40px;font-weight:800">${esc(uc.myWord)}</div>
         <div style="font-size:12px;color:#C9BBE8;font-weight:700">ne le montre à personne 👀</div></div>
       ${v.iAmHost?`<button class="btn btn--coral lg block" id="go">Lancer les indices ▶</button>`:'<div class="center muted" style="font-weight:700">⏳ l\'hôte lance le 1er tour…</div>'}
-      <button class="btn btn--ghost sm" id="quit" style="align-self:flex-start">← quitter</button>
     </div></section>`);
     if(v.iAmHost){ const g=$('#go'); if(g) g.onclick=()=>{ SJ.audio.click(); act('ucgo'); }; }
-    $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
   function rUcClue(v){ const uc=v.uc, dead=!uc.iAmAlive, mine=uc.myClue;
     mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:14px">
@@ -1067,14 +1074,12 @@ SJ.room = (function(){
       <div class="center" style="font-size:14px;font-weight:700;color:#7A6BA8">Mot civil : <b>${esc(uc.wCivil)}</b> · mot imposteur : <b>${esc(uc.wUnder)}</b></div>
       <div class="col" style="gap:7px">${rows}</div>
       <div class="center"><span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${uc.earned||0} 🪙</span></div>
-      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button><button class="btn btn--purple" id="menu">🏠 Menu des jeux</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
+      <div class="row wrap" style="justify-content:center;gap:12px">${v.iAmHost?'<button class="btn btn--teal" id="again">Rejouer ↻</button>':''}</div>
       ${v.iAmHost?'':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
     </div></section>`);
     if(uc.iWon){ SJ.audio.win(); U().confetti(55); } else { SJ.audio.lose(); U().confetti(18); }
     if(!coinsClaimed){ SJ.store.addCoins(uc.earned||0); coinsClaimed=true; }
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('ucagain'); };
-    const mn=$('#menu'); if(mn) mn.onclick=()=>{ SJ.audio.click(); act('tosalon'); };
-    $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
 
   /* ================= DESSINE & DEVINE (PICTIONARY) ================= */
@@ -1205,7 +1210,7 @@ SJ.room = (function(){
   function ttSubmit(id, word){
     if(phase!=='ttplay'||!M||!M.running||id!==M.holder) return;
     const w=String(word||'').toUpperCase().replace(/[^A-ZÀ-Ü]/g,''); const syl=SJ.BOMBSYL[M.sylIdx].s;
-    if(w.length<3){ M.feedback='trop court ! 3 lettres min'; M.feedbackKind='bad'; hostRefresh(); return; }
+    if(w.length<2){ M.feedback='trop court !'; M.feedbackKind='bad'; hostRefresh(); return; }
     if(w.indexOf(syl)<0){ M.feedback='il faut « '+syl+' » dedans !'; M.feedbackKind='bad'; hostRefresh(); return; }
     if(M.used[w]){ M.feedback='déjà dit ! trouve un autre'; M.feedbackKind='bad'; hostRefresh(); return; }
     M.used[w]=true; M.holder=ttNextHolder(M.holder); M.sylIdx=ttPickSyl();
@@ -1230,6 +1235,7 @@ SJ.room = (function(){
     curKey=null; hostRefresh();
   }
   function ttRingPos(i,n){ const ang=(-90+i*(360/n))*Math.PI/180, r=50; return { left:(50+r*Math.cos(ang))+'%', top:(50+r*Math.sin(ang))+'%' }; }
+  function ttShake(){ const s=app().querySelector('.stage'); if(s){ s.style.animation='none'; void s.offsetWidth; s.style.animation='shake .35s'; } }   // « c'est pas bon » : tout se secoue
   function rTtPlay(v){
     const tt=v.tt, n=tt.ring.length;
     const ringHTML=tt.ring.map((pl,i)=>{ const pos=ttRingPos(i,n); return `<div style="position:absolute;top:${pos.top};left:${pos.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;width:78px">
@@ -1246,7 +1252,7 @@ SJ.room = (function(){
         <div class="row gap8"><input id="tt-input" class="field" placeholder="tape un mot…" maxlength="24" style="flex:1;text-transform:uppercase;font-size:20px;font-weight:800"><button class="btn btn--teal" id="tt-send" style="width:62px">✓</button></div>
         <div id="tt-fb" style="min-height:22px;font-size:15px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div>
       </div>`
-      : (tt.running ? `<div class="card sh-pink" style="text-align:center;display:flex;flex-direction:column;gap:5px"><div style="font-size:18px;font-weight:800">💣 Au tour de <b style="color:#FF5D73">${esc(tt.holderName)}</b></div><div style="font-size:14px;font-weight:700;color:#7A6BA8">un mot avec « ${esc(tt.syllable)} »</div><div id="tt-fb" style="min-height:18px;font-size:14px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div></div>`
+      : (tt.running ? `<div class="card sh-pink" style="text-align:center;display:flex;flex-direction:column;gap:6px"><div style="font-size:18px;font-weight:800">💣 Au tour de <b style="color:#FF5D73">${esc(tt.holderName)}</b></div><div style="font-size:13px;font-weight:700;color:#7A6BA8">un mot avec « ${esc(tt.syllable)} »</div><div id="tt-live" style="font-size:26px;font-weight:800;color:#3B2D5E;letter-spacing:2px;min-height:34px;word-break:break-word"><span style="opacity:.45;font-weight:700">…</span></div><div id="tt-fb" style="min-height:18px;font-size:14px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div></div>`
         : (v.iAmHost ? `<button class="btn btn--coral lg block" id="tt-light">🔥 Allumer la mèche</button>` : `<div class="center muted" style="font-weight:700">⏳ en attente que l'hôte allume la mèche…</div>`));
     mMount(`<section class="screen"><div class="stage" style="max-width:560px;gap:14px">
       <div class="row between"><span class="pill" style="background:#3B2D5E;color:#fff;font-weight:800">Manche ${tt.round}</span><span style="font-size:15px;font-weight:700;color:#7A6BA8">${tt.aliveCount} en vie</span></div>
@@ -1259,30 +1265,44 @@ SJ.room = (function(){
       </div>
       ${tt.running?'<div class="center" style="font-size:14px;font-weight:800;color:#C23A50">🔥 Mèche allumée — ça peut péter À TOUT MOMENT 💥</div>':''}
       ${cons}
-      <button class="btn btn--ghost sm" id="tt-quit" style="align-self:flex-start">← quitter</button>
     </div></section>`);
-    $('#tt-quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
+    ttLiveLen=0;
     if(!tt.running && v.iAmHost){ const l=$('#tt-light'); if(l) l.onclick=()=>{ SJ.audio.click(); act('ttlight'); }; }
     if(tt.iAmHolder && tt.running){ const inp=$('#tt-input'), snd=$('#tt-send'), fb=$('#tt-fb');
+      const bad=(msg)=>{ if(fb){ fb.textContent=msg; fb.style.color='#FF5D73'; } ttShake(); SJ.audio.nope&&SJ.audio.nope(); };
       const go=()=>{ const w=((inp.value||'').trim()).toUpperCase().replace(/[^A-ZÀ-Ü]/g,''); const syl=(tt.syllable||'').toUpperCase();
-        if(w.length<3){ if(fb){fb.textContent='trop court ! 3 lettres min'; fb.style.color='#FF5D73';} return; }
-        if(w.indexOf(syl)<0){ if(fb){fb.textContent='il faut « '+tt.syllable+' » dedans !'; fb.style.color='#FF5D73';} return; }
-        SJ.audio.click(); act('ttword',{word:w}); };
-      if(snd) snd.onclick=go; if(inp){ inp.onkeydown=(e)=>{ if(e.key==='Enter') go(); }; inp.focus(); } }
+        if(w.length<2){ bad('trop court !'); return; }
+        if(w.indexOf(syl)<0){ bad('il faut « '+tt.syllable+' » dedans !'); return; }
+        SJ.audio.validate&&SJ.audio.validate(); act('ttword',{word:w}); };
+      if(snd) snd.onclick=go;
+      if(inp){ inp.onkeydown=(e)=>{ if(e.key==='Enter') go(); };
+        inp.oninput=()=>{ SJ.audio.key&&SJ.audio.key(); act('ttinput',{text:(inp.value||'')}); };
+        inp.focus(); }
+      if(tt.feedbackKind==='bad'){ ttShake(); SJ.audio.nope&&SJ.audio.nope(); }   // mot refusé par l'hôte (déjà dit)
+    }
   }
   function rTtBoom(v){ const b=v.tt.boom||{};
-    mMount(`<section class="screen"><div class="stage" style="max-width:400px;align-items:center;text-align:center;gap:16px">
-      <div class="card" style="background:linear-gradient(170deg,#FF5D73,#C23A50);border:3px solid #3B2D5E;border-radius:30px;box-shadow:0 10px 0 #8A2438;padding:26px;color:#fff;display:flex;flex-direction:column;gap:13px;align-items:center;width:100%">
-        <div style="font-size:80px;animation:shake .4s ease-in-out infinite">💥</div>
-        <div style="font-size:40px;font-weight:800;text-shadow:0 4px 0 rgba(0,0,0,.25)">BOUM !</div>
-        <div style="background:rgba(255,255,255,.96);border:3px solid #3B2D5E;border-radius:18px;padding:14px 18px;color:#3B2D5E;display:flex;flex-direction:column;gap:8px;align-items:center">
-          <div style="width:52px;height:52px;border-radius:50%;border:3px solid #3B2D5E;background:${b.color||'#FF5D73'};display:flex;align-items:center;justify-content:center;font-size:28px">${esc(b.emoji||'😵')}</div>
-          <div style="font-size:20px;font-weight:800">${esc(b.name||'?')} ${b.out?'est éliminé·e 💀':'explose !'}</div>
+    if(b.you){   // LE perdant : grosse animation rouge
+      mMount(`<section class="screen"><div class="stage" style="max-width:400px;align-items:center;text-align:center;gap:16px">
+        <div class="card" style="background:linear-gradient(170deg,#FF5D73,#C23A50);border:3px solid #3B2D5E;border-radius:30px;box-shadow:0 10px 0 #8A2438;padding:26px;color:#fff;display:flex;flex-direction:column;gap:13px;align-items:center;width:100%">
+          <div style="font-size:84px;animation:shake .4s ease-in-out infinite">💥</div>
+          <div style="font-size:42px;font-weight:800;text-shadow:0 4px 0 rgba(0,0,0,.25)">BOUM !</div>
+          <div style="background:rgba(255,255,255,.96);border:3px solid #3B2D5E;border-radius:18px;padding:14px 18px;color:#3B2D5E;font-size:19px;font-weight:800">${b.out?'Tu es éliminé·e 💀':'Tu perds une vie !'}<div style="font-size:16px;color:#C23A50;margin-top:4px">${b.hearts||''}</div></div>
+          <div style="font-size:15px;font-weight:700;color:#FFE9EE">Nouvelle mèche, nouveau bout de mot…</div>
+        </div></div></section>`);
+      SJ.audio.lose&&SJ.audio.lose();
+    } else {     // les AUTRES : on voit juste le joueur exploser, pas d'animation rouge
+      mMount(`<section class="screen"><div class="stage" style="max-width:420px;align-items:center;text-align:center;gap:14px">
+        <div class="card sh-purple" style="display:flex;flex-direction:column;gap:10px;align-items:center;width:100%">
+          <div style="position:relative;width:72px;height:72px;display:flex;align-items:center;justify-content:center">
+            <span style="opacity:${b.out?'.5':'1'}">${U().ava({avatar:b.avatar,emoji:b.emoji,hat:b.hat,hatPos:b.hatPos,bg:b.color},64)}</span>
+            <div class="pop" style="position:absolute;font-size:46px">💥</div>
+          </div>
+          <div style="font-size:21px;font-weight:800">${esc(b.name||'?')} ${b.out?'est éliminé·e 💀':'explose 💣'}</div>
           <div style="font-size:16px;font-weight:800;color:#C23A50">${b.hearts||''} → −1 vie</div>
-        </div>
-        <div style="font-size:15px;font-weight:700;color:#FFE9EE">Nouvelle mèche, nouveau bout de mot…</div>
-      </div></div></section>`);
-    SJ.audio.lose&&SJ.audio.lose();
+        </div></div></section>`);
+      SJ.audio.pop&&SJ.audio.pop();
+    }
   }
   function rTtOver(v){ const o=v.tt.over||{};
     mMount(`<section class="screen"><div class="stage" style="max-width:400px;align-items:center;text-align:center;gap:14px">
@@ -1294,15 +1314,15 @@ SJ.room = (function(){
       <div style="font-size:28px;font-weight:800">${o.iWon?'Tu gagnes !':esc(o.winnerName)+' gagne !'}</div>
       <div style="font-size:16px;font-weight:700;color:#7A6BA8">A survécu à <b style="color:#3B2D5E">${o.rounds} manche${o.rounds>1?'s':''}</b> 😅</div>
       <span class="pill paper" style="font-size:18px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${o.earned||0} 🪙</span>
-      <div class="row wrap" style="justify-content:center;gap:10px">${v.iAmHost?'<button class="btn btn--coral" id="again">🔁 Revanche</button><button class="btn btn--purple" id="menu">🏠 Menu des jeux</button>':''}<button class="btn btn--ghost" id="quit">Quitter</button></div>
+      <div class="row wrap" style="justify-content:center;gap:10px">${v.iAmHost?'<button class="btn btn--coral" id="again">🔁 Revanche</button>':''}</div>
       ${v.iAmHost?'':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}
     </div></section>`);
     if(o.iWon){ SJ.audio.win(); U().confetti(60); } else { SJ.audio.lose&&SJ.audio.lose(); U().confetti(16); }
     if(!coinsClaimed){ SJ.store.addCoins(o.earned||0); coinsClaimed=true; }
     const a=$('#again'); if(a) a.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('ttagain'); };
-    const mn=$('#menu'); if(mn) mn.onclick=()=>{ SJ.audio.click(); act('tosalon'); };
-    $('#quit').onclick=()=>{ SJ.audio.click(); quitToHome(); };
   }
+
+  (function(){ const b=document.getElementById('gomenu'); if(b) b.onclick=()=>{ SJ.audio.click(); act('tosalon'); }; })();
 
   return { createHost, join, leave, act, quitToHome, _state:()=>({role,phase,players,code}) };
 })();

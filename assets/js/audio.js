@@ -59,6 +59,8 @@ SJ.audio = (function(){
       else { tone(200,.22,{type:'sawtooth',gain:.12,slideTo:120}); }      // +0 « pschitt »
     },
     coin(){ tone(1175,.06,{type:'square',gain:.12}); tone(1568,.10,{delay:.05,type:'square',gain:.12}); },
+    key(){ tone(1500+Math.random()*600,.018,{type:'square',gain:.05}); },                 // frappe clavier satisfaisante
+    nope(){ tone(196,.13,{type:'sawtooth',gain:.14,slideTo:120}); noise(.05,{gain:.05,hp:300}); },  // « c'est pas bon »
     win(){ seq([[523,.12,0],[659,.12,.1],[784,.12,.2],[1047,.28,.3]]); noise(.4,{gain:.06,delay:.3,hp:300}); },
     lose(){ seq([[392,.16,0,'sawtooth'],[330,.16,.14,'sawtooth'],[247,.3,.28,'sawtooth']]); },
   };

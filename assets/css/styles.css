@@ -169,6 +169,12 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
 /* ---------- mute button ---------- */
 .mute-btn{position:fixed; right:14px; bottom:14px; z-index:50; width:46px; height:46px; border:var(--bd); border-radius:50%; background:#fff; font-size:20px; cursor:pointer; box-shadow:0 4px 0 var(--ink-ghost)}
 .mute-btn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--ink-ghost)}
+/* bouton « retour au menu » global pendant une partie (remplace les boutons quitter) */
+#gomenu{ position:fixed; top:max(10px,env(safe-area-inset-top)); left:max(10px,env(safe-area-inset-left)); z-index:50; display:none;
+  align-items:center; gap:5px; background:#fff; border:var(--bd); border-radius:999px; padding:6px 14px;
+  font-family:'Baloo 2',system-ui,sans-serif; font-weight:800; font-size:14px; color:var(--ink); cursor:pointer; box-shadow:0 4px 0 var(--ink-ghost); }
+#gomenu:active{ transform:translateY(2px); box-shadow:0 2px 0 var(--ink-ghost); }
+body.in-game .screen{ padding-top:60px; }   /* place pour le bouton menu en haut à gauche */
 
 /* ---------- confetti ---------- */
 #confetti{position:fixed; inset:0; pointer-events:none; z-index:60; overflow:hidden}
