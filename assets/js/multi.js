@@ -101,8 +101,8 @@ SJ.room = (function(){
 
   function hostStart(gameId){
     const real=players.length;
-    if(gameId==='solo'){ soloStart(); return; }   // jouable même seul (des bots complètent la table)
     if(real<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
+    if(gameId==='solo'){ soloStart(); return; }
     if(gameId==='partybox'){ pbStart(); return; }
     if(gameId==='bluff'){ ucStart(); return; }
     if(gameId==='draw'||gameId==='pictionary'){ piStart(); return; }
@@ -172,8 +172,7 @@ SJ.room = (function(){
       const counts=SJ.GAMES.map((_,i)=>players.filter(p=>p.vote===i).length);
       let lead=0; counts.forEach((c,i)=>{ if(c>counts[lead]) lead=i; });
       const any=counts[lead]>0;
-      const targetIdx=salonWinner!=null?salonWinner:(any?lead:0); const targetGame=SJ.GAMES[targetIdx];
-      const canLaunch = players.length>=2 || (targetGame && targetGame.id==='solo');   // Solo : jouable seul
+      const canLaunch = players.length>=2;
       v.salon={
         spinning:salonSpinning, winner:salonWinner, canLaunch,
         games:SJ.GAMES.map((g,i)=>({ id:g.id,name:g.name,icon:g.icon,tagline:g.tagline,time:g.time,bg:g.bg,shadow:g.shadow,text:g.text,rot:g.rot,tint:g.tint,playable:!!g.playable,
@@ -430,7 +429,7 @@ SJ.room = (function(){
     const avatarP = SJ.ui.myAvatarProfile();
     const actionsInner = host
       ? `<div class="row gap8" style="width:100%"><button class="btn btn--yellow grow" id="rand">${s.spinning?'🌀 Tirage…':'🎲 Hasard'}</button><button class="btn btn--teal grow" id="launch" ${s.canLaunch?'':'disabled'}>${s.winner!=null?"C'est parti ▶":"Lancer ▶"}</button></div>
-         <div class="center sa-hint" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — min. 2 (ou joue à Uno ! tout seul)':"L'hôte lance quand vous êtes prêts"}</div>`
+         <div class="center sa-hint" style="font-size:12px;font-weight:600;color:#EADBFF">${v.players.length<2?'Partage le code — min. 2 joueurs':"L'hôte lance quand vous êtes prêts"}</div>`
       : `<div class="center" style="font-size:14px;font-weight:700;color:#EADBFF">⏳ l'hôte lance la partie…</div>`;
     const settingsPanel = host ? `<div class="salon-cfg-wrap" id="cfgwrap">
         <div class="card salon-cfg" style="display:flex;flex-direction:column;gap:10px;box-shadow:0 9px 0 #C9BBE8">
@@ -544,7 +543,7 @@ SJ.room = (function(){
     if(target==null){ const counts=SJ.GAMES.map((_,i)=>players.filter(p=>p.vote===i).length); let lead=0; counts.forEach((c,i)=>{ if(c>counts[lead]) lead=i; }); target = counts[lead]>0?lead:0; }
     const g=SJ.GAMES[target];
     if(!g.playable){ U().toast(`🚧 ${g.name} arrive bientôt ! Choisis un jeu jouable 🎯`); return; }
-    if(g.id!=='solo' && players.length<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }   // Solo : jouable seul (bots)
+    if(players.length<2){ U().toast('Il faut au moins 2 joueurs 😊'); return; }
     hostStart(g.id);
   }
   function renderDurs(){ const e=document.getElementById('durs'); if(!e)return; e.innerHTML=SJ.DURATIONS.map(d=>`<div class="dur" data-id="${d.id}" style="flex:1;text-align:center;font-weight:${d.id===settings.durationId?800:700};border:3px solid #3B2D5E;border-radius:12px;padding:8px 0;cursor:pointer;background:${d.id===settings.durationId?'#9B5DE5':'#fff'};color:${d.id===settings.durationId?'#fff':'#3B2D5E'};box-shadow:${d.id===settings.durationId?'0 4px 0 #6E3CB0':'none'}">${d.label}<br><span style="font-size:13px;opacity:.85">${d.rounds} tours</span></div>`).join('');
@@ -1377,8 +1376,7 @@ SJ.room = (function(){
     const t=M.deck.splice(ti,1)[0]; M.discard=[t]; M.top=t; M.activeColor=t.color; M.drawn=null; }
   function soloStart(){
     players.forEach(p=>p.score=0);
-    const seats=players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,color:p.color,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,bot:false}));
-    let bi=0; while(seats.length<4 && bi<SOLO_BOTS.length){ const b=SOLO_BOTS[bi++]; seats.push({id:'sbot'+bi,name:b.name,emoji:b.emoji,color:b.color,bot:true}); }
+    const seats=players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,color:p.color,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,bot:false}));   // de vrais joueurs uniquement (pas de bots)
     M={ gameType:'solo', seats, cards:{}, deck:[], discard:[], top:null, activeColor:'R', turn:0, dir:1, needColor:false, needColorSeat:-1, pendingWild:null, drawn:null, message:'À toi de jouer 👇', round:1, winnerSeat:-1, coins:{} };
     soloDeal(); seats.forEach(s=>{ M.coins[s.id]=0; });
     coinsClaimed=false; phase='soloplay'; curKey=null; SJ.audio.pop(); U().confetti(12); hostRefresh(); scheduleSoloAI();
