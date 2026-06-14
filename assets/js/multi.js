@@ -216,7 +216,6 @@ SJ.room = (function(){
         v.gameType='tictacmot'; const alive=ttAlive(); const syl=SJ.BOMBSYL[M.sylIdx]||{s:'',hints:[]}; const holder=players.find(p=>p.id===M.holder);
         v.tt={ round:M.round, aliveCount:alive.length, total:players.length, running:M.running,
           syllable:syl.s, iAmHolder:(M.holder===forId), holderName:holder?holder.name:'?',
-          myHints:(M.holder===forId)?syl.hints:null, fusePct:M.fusePct, fuseDanger:M.fusePct<30,
           feedback:M.feedback, feedbackKind:M.feedbackKind,
           ring:players.map(p=>{ const dead=(M.lives[p.id]||0)<=0; return {name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.color,
             dead, holder:(p.id===M.holder&&!dead), you:(p.id===forId),
@@ -276,7 +275,6 @@ SJ.room = (function(){
     if(m.t==='flash'){ flashCard(m.hi); return; }
     if(m.t==='draw'){ if(!piIsDrawer) piApply(m.segs,m.c,m.w); return; }
     if(m.t==='clear'){ if(!piIsDrawer) piClearCanvas(); return; }
-    if(m.t==='fuse'){ patchFuse(m.pct, m.danger); return; }
   }
   function guestOnClose(){ U().toast('Connexion à l\'hôte perdue'); quitToHome(); }
 
@@ -328,7 +326,7 @@ SJ.room = (function(){
     else if(type==='tosalon'){ mClear(); M=null; phase='lobby'; curKey=null; salonWinner=null; salonSpinning=false; coinsClaimed=false; players.forEach(p=>{ p.vote=null; }); hostRefresh(); }   // retour au menu des jeux SANS casser le salon
   }
 
-  function leave(){ if(ttFuse){ clearInterval(ttFuse); ttFuse=null; } try{ if(net){ if(role==='guest') net.send({t:'leave'}); net.leave(); } }catch(e){} net=null; role='solo'; M=null; phase='lobby'; }
+  function leave(){ if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; } try{ if(net){ if(role==='guest') net.send({t:'leave'}); net.leave(); } }catch(e){} net=null; role='solo'; M=null; phase='lobby'; }
   function quitToHome(){ leave(); SJ.screens.home(); }
 
   /* ================= RENDU UNIFIÉ ================= */
@@ -1190,7 +1188,7 @@ SJ.room = (function(){
   function ttStart(){
     if(players.length<2){ U().toast('Tic-Tac-Mot : il faut au moins 2 joueurs 🙂'); return; }
     players.forEach(p=>p.score=0);
-    M={ gameType:'tictacmot', lives:{}, holder:null, sylIdx:0, round:1, running:false, fusePct:100, fuseEnd:0, fuseTotal:1,
+    M={ gameType:'tictacmot', lives:{}, holder:null, sylIdx:0, round:1, running:false,
         feedback:'', feedbackKind:'', winnerId:null, boomName:'', used:{}, coins:{} };
     players.forEach(p=>{ M.lives[p.id]=3; M.coins[p.id]=0; });
     const al=ttAlive(); M.holder=al[Math.floor(Math.random()*al.length)].id; M.sylIdx=Math.floor(Math.random()*SJ.BOMBSYL.length);
@@ -1198,15 +1196,11 @@ SJ.room = (function(){
   }
   function ttLight(){ if(!M||M.running) return;
     M.running=true; M.feedback=''; M.feedbackKind=''; M.used={};
-    M.fuseTotal = 2800 + Math.floor(Math.random()*12200);   // mèche cachée 2,8 → 15 s
-    M.fuseEnd = nowMs()+M.fuseTotal; M.fusePct=100;
-    curKey=null; hostRefresh(); ttRunFuse();
-  }
-  function ttRunFuse(){ if(ttFuse){ clearInterval(ttFuse); ttFuse=null; }
-    ttFuse=setInterval(()=>{ if(!M||phase!=='ttplay'||!M.running){ clearInterval(ttFuse); ttFuse=null; return; }
-      const left=M.fuseEnd-nowMs(); const pct=Math.max(0,left/M.fuseTotal*100); M.fusePct=pct; const danger=pct<30;
-      if(left<=0){ clearInterval(ttFuse); ttFuse=null; ttExplode(); return; }
-      patchFuse(pct,danger); if(net) net.broadcast({t:'fuse',pct:Math.round(pct),danger}); },110);
+    curKey=null; hostRefresh();
+    // mèche TOTALEMENT aléatoire et CACHÉE : un seul timer, aucune barre, aucune info de durée
+    const totalMs = 2800 + Math.floor(Math.random()*13200);   // 2,8 → 16 s
+    if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; }
+    ttFuse=setTimeout(()=>{ ttFuse=null; if(M&&phase==='ttplay'&&M.running) ttExplode(); }, totalMs);
   }
   function ttSubmit(id, word){
     if(phase!=='ttplay'||!M||!M.running||id!==M.holder) return;
@@ -1219,31 +1213,25 @@ SJ.room = (function(){
     curKey=null; hostRefresh();   // la mèche CONTINUE (on ne touche pas à ttFuse)
   }
   function ttExplode(){
-    if(!M) return; if(ttFuse){ clearInterval(ttFuse); ttFuse=null; }
+    if(!M) return; if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; }
     const h=M.holder; M.lives[h]=Math.max(0,(M.lives[h]||0)-1); M.running=false;
     const p=players.find(x=>x.id===h); M.boomName=p?p.name:'?';
     const alive=ttAlive();
     if(alive.length<=1){ ttGameOver(alive[0]?alive[0].id:null); return; }
     phase='ttboom'; curKey=null; SJ.audio.lose&&SJ.audio.lose(); hostRefresh();
     mAfter(2600, ()=>{ if(phase!=='ttboom'||!M) return;
-      M.round++; M.holder=ttNextHolder(h); M.sylIdx=ttPickSyl(); M.feedback=''; M.feedbackKind=''; M.running=false; M.fusePct=100;
+      M.round++; M.holder=ttNextHolder(h); M.sylIdx=ttPickSyl(); M.feedback=''; M.feedbackKind=''; M.running=false;
       phase='ttplay'; ttLight(); });   // relance auto la nouvelle manche
   }
   function ttGameOver(winnerId){
-    if(ttFuse){ clearInterval(ttFuse); ttFuse=null; }
+    if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; }
     phase='ttover'; M.running=false; M.winnerId=winnerId;
     players.forEach(p=>{ const win=p.id===winnerId; M.coins[p.id]=(M.coins[p.id]||0)+(M.round*3)+(win?20:0); if(win) p.score+=1; });
     curKey=null; hostRefresh();
   }
-  function patchFuse(pct,danger){
-    const bar=app().querySelector('#tt-fuse'); if(bar){ bar.style.width=pct+'%'; bar.style.background=danger?'#FF5D73':(pct<60?'#FFC93C':'#2EC4B6'); }
-    const hint=app().querySelector('#tt-fusehint'); if(hint){ hint.textContent=danger?'ÇA CHAUFFE 🔥':'ça tourne…'; hint.style.color=danger?'#FF5D73':'#2EC4B6'; }
-    const bomb=app().querySelector('#tt-bomb'); if(bomb){ bomb.style.animation=danger?'shake .3s ease-in-out infinite':''; }
-    const spark=app().querySelector('#tt-spark'); if(spark){ spark.textContent=danger?'🔥':'✨'; }
-  }
   function ttRingPos(i,n){ const ang=(-90+i*(360/n))*Math.PI/180, r=50; return { left:(50+r*Math.cos(ang))+'%', top:(50+r*Math.sin(ang))+'%' }; }
   function rTtPlay(v){
-    const tt=v.tt, danger=tt.fuseDanger, n=tt.ring.length;
+    const tt=v.tt, n=tt.ring.length;
     const ringHTML=tt.ring.map((pl,i)=>{ const pos=ttRingPos(i,n); return `<div style="position:absolute;top:${pos.top};left:${pos.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;width:78px">
         <div style="position:relative;width:56px;height:56px;border-radius:50%;border:4px solid ${pl.holder?'#FF5D73':'#3B2D5E'};background:${pl.holder?'#FFF1C9':'#fff'};display:flex;align-items:center;justify-content:center;box-shadow:${pl.holder?'0 0 0 5px rgba(255,93,115,.35),0 4px 0 #C9BBE8':'0 4px 0 #C9BBE8'};opacity:${pl.dead?'.5':'1'}">
           ${U().ava({avatar:pl.avatar,emoji:pl.emoji,hat:pl.hat,hatPos:pl.hatPos,bg:pl.bg},44)}
@@ -1257,7 +1245,6 @@ SJ.room = (function(){
         <div style="font-size:17px;font-weight:800">À toi ! <span style="color:#7A6BA8;font-weight:700;font-size:14px">un mot avec « ${esc(tt.syllable)} »</span></div>
         <div class="row gap8"><input id="tt-input" class="field" placeholder="tape un mot…" maxlength="24" style="flex:1;text-transform:uppercase;font-size:20px;font-weight:800"><button class="btn btn--teal" id="tt-send" style="width:62px">✓</button></div>
         <div id="tt-fb" style="min-height:22px;font-size:15px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div>
-        <div class="row wrap gap6" style="align-items:center"><span style="font-size:13px;font-weight:700;color:#A99CC9">idées :</span>${(tt.myHints||[]).map(h=>`<span style="background:#F4EFFF;border:2px solid #C9BBE8;border-radius:999px;padding:2px 11px;font-size:13px;font-weight:700;color:#7A6BA8">${esc(h)}</span>`).join('')}</div>
       </div>`
       : (tt.running ? `<div class="card sh-pink" style="text-align:center;display:flex;flex-direction:column;gap:5px"><div style="font-size:18px;font-weight:800">💣 Au tour de <b style="color:#FF5D73">${esc(tt.holderName)}</b></div><div style="font-size:14px;font-weight:700;color:#7A6BA8">un mot avec « ${esc(tt.syllable)} »</div><div id="tt-fb" style="min-height:18px;font-size:14px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div></div>`
         : (v.iAmHost ? `<button class="btn btn--coral lg block" id="tt-light">🔥 Allumer la mèche</button>` : `<div class="center muted" style="font-weight:700">⏳ en attente que l'hôte allume la mèche…</div>`));
@@ -1265,15 +1252,12 @@ SJ.room = (function(){
       <div class="row between"><span class="pill" style="background:#3B2D5E;color:#fff;font-weight:800">Manche ${tt.round}</span><span style="font-size:15px;font-weight:700;color:#7A6BA8">${tt.aliveCount} en vie</span></div>
       <div style="position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center">
         <div id="tt-bomb" style="position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,#5A4A7A,#2A2440);border:4px solid #3B2D5E;box-shadow:0 8px 0 #1F1638,inset 0 -6px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
-          <div id="tt-spark" style="position:absolute;top:-16%;right:6%;font-size:28px">${tt.running?(danger?'🔥':'✨'):''}</div>
+          <div id="tt-spark" style="position:absolute;top:-16%;right:6%;font-size:28px;animation:sparkle .5s ease-in-out infinite">${tt.running?'🔥':''}</div>
           <div style="font-size:12px;font-weight:800;color:#FFC93C;letter-spacing:1px">UN MOT EN</div>
           <div style="font-size:clamp(28px,9vw,46px);font-weight:800;color:#fff;line-height:.9">${esc(tt.syllable)}</div>
         </div>${ringHTML}
       </div>
-      <div style="display:flex;flex-direction:column;gap:5px">
-        <div class="row between"><span style="font-size:14px;font-weight:800;color:#7A6BA8">🔥 MÈCHE (durée cachée)</span><span id="tt-fusehint" style="font-size:14px;font-weight:800;color:${tt.running?(danger?'#FF5D73':'#2EC4B6'):'#A99CC9'}">${tt.running?(danger?'ÇA CHAUFFE 🔥':'ça tourne…'):'en attente'}</span></div>
-        <div style="height:20px;border:3px solid #3B2D5E;border-radius:999px;background:#FFE1E7;overflow:hidden;position:relative"><div id="tt-fuse" style="position:absolute;inset:0 auto 0 0;width:${tt.fusePct}%;background:${danger?'#FF5D73':(tt.fusePct<60?'#FFC93C':'#2EC4B6')};transition:width .12s linear"></div></div>
-      </div>
+      ${tt.running?'<div class="center" style="font-size:14px;font-weight:800;color:#C23A50">🔥 Mèche allumée — ça peut péter À TOUT MOMENT 💥</div>':''}
       ${cons}
       <button class="btn btn--ghost sm" id="tt-quit" style="align-self:flex-start">← quitter</button>
     </div></section>`);
