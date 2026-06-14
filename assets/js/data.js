@@ -161,6 +161,8 @@ SJ.PB = (function(){
     { key:'trapcolor', fn:()=>{ const cols=shuffle(COLORS.slice()).slice(0,4); const tIdx=ri(4); const target=cols[tIdx];
       const cells=cols.map((c,i)=>({bg:c.c, label:cols[(i+1)%4].n}));   // chaque texte = une AUTRE couleur que le fond
       return {kind:'trapcolor', prompt:`Clique le bouton ${target.n.toUpperCase()}`, cells, correct:tIdx, cat:'trap', trap:true}; } },
+    // CAPTCHA EXTRÊME : 5 étapes de plus en plus absurdes à passer dans le temps (mèche plus longue)
+    { key:'captcha', fn:()=>({kind:'captcha', prompt:'🤖 CAPTCHA EXTRÊME', dur:11, cat:'trap', trap:true}) },
   ];
 
   return {

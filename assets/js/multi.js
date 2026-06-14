@@ -12,8 +12,8 @@ SJ.room = (function(){
   function $(s){ return app().querySelector(s); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-  let mPending=[], mTick=null;
-  function mClear(){ mPending.forEach(clearTimeout); mPending=[]; if(mTick){clearInterval(mTick);mTick=null;} if(pbAudioTimer){clearInterval(pbAudioTimer);pbAudioTimer=null;} if(pbRaf){cancelAnimationFrame(pbRaf);pbRaf=0;} if(pbCountTimer){clearInterval(pbCountTimer);pbCountTimer=null;} }
+  let mPending=[], mTick=null, capTimers=[];
+  function mClear(){ mPending.forEach(clearTimeout); mPending=[]; if(mTick){clearInterval(mTick);mTick=null;} if(pbAudioTimer){clearInterval(pbAudioTimer);pbAudioTimer=null;} if(pbRaf){cancelAnimationFrame(pbRaf);pbRaf=0;} if(pbCountTimer){clearInterval(pbCountTimer);pbCountTimer=null;} capTimers.forEach(id=>{clearTimeout(id);clearInterval(id);}); capTimers=[]; }
   function mMount(html){ mClear(); app().innerHTML=html; app().scrollTop=0; }
   function mAfter(ms,fn){ const id=setTimeout(fn,ms); mPending.push(id); return id; }
   // affiche l'horloge (devinette) ou le compte à rebours de révélation — utilisé par hôte ET invités
@@ -725,6 +725,7 @@ SJ.room = (function(){
     M.round++; M.dur=Math.max(2.4, 5.8 - M.round*0.3);
     const allMic = alive.length>0 && alive.every(p=>(M.perms[p.id]||{}).mic);
     M.mini=SJ.PB.make(allMic, M.lastKey); M.lastKey=M.mini.key;
+    if(M.mini.dur) M.dur=M.mini.dur;   // certains minis (captcha) ont besoin de plus de temps
     M.responses={}; M.lifeLostBy=[]; M.newlyOut=[]; M.fastId=null;
     phase='pbplay'; curKey=null; hostRefresh();
     mAfter(Math.round(M.dur*1000)+300, ()=>{ if(phase==='pbplay') pbResolve(); });
@@ -853,6 +854,8 @@ SJ.room = (function(){
           <div style="position:absolute;top:-5px;bottom:-5px;left:${tp}%;width:4px;background:#FF5D73;border-radius:2px"></div>
           <div style="position:absolute;top:-21px;left:${tp}%;transform:translateX(-50%);font-size:16px">🎯</div>
         </div>`;
+    } else if(m.kind==='captcha'){
+      body=`<div id="cap-prog" class="center" style="font-size:13px;font-weight:800;color:#7A6BA8">Étape 1/5</div><div id="cap" style="min-height:172px;display:flex;flex-direction:column;gap:10px;justify-content:center"></div>`;
     }
     const foot = dead?'<div class="center" style="color:#9B5DE5;font-weight:800;font-size:13px">💀 Éliminé — tu regardes les autres jouer</div>'
       : (sudden?'<div class="center" style="color:#C23A50;font-weight:800;font-size:14px">💀 DERNIÈRE VIE !</div>'
@@ -876,8 +879,55 @@ SJ.room = (function(){
           else if(n===m.target){ SJ.audio.pop(); btn.style.background='#2EC4B6'; btn.style.color='#fff'; btn.style.boxShadow='0 8px 0 #1E8B81'; if(msg){ msg.textContent='✅'; msg.style.color='#1E8B81'; } act('pbresp',{tap:n,dt}); }
           else { answered=true; btn.style.background='#FF5D73'; btn.style.color='#fff'; btn.style.boxShadow='0 8px 0 #C23A50'; if(msg){ msg.textContent='✗ trop !'; msg.style.color='#C23A50'; } act('pbresp',{tap:n,dt}); } }; }
       else if(m.kind==='crie'){ pbListenMic(m.micTarget, ()=>{ SJ.audio.pop(); done({ok:true}); }); }
+      else if(m.kind==='captcha'){ runCaptcha($('#cap'), $('#cap-prog'), ()=>done({ok:true})); }
     }
     pbTicks(pb.dur);
+  }
+  // CAPTCHA EXTRÊME : 5 étapes de plus en plus absurdes ; onDone() quand tout est passé
+  function runCaptcha(box, prog, onDone){
+    if(!box) return;
+    const ri=(n)=>Math.floor(Math.random()*n);
+    const shuf=(a)=>{ for(let i=a.length-1;i>0;i--){ const j=ri(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+    const T=(fn,ms)=>{ const id=setTimeout(fn,ms); capTimers.push(id); return id; };
+    const IV=(fn,ms)=>{ const id=setInterval(fn,ms); capTimers.push(id); return id; };
+    let step=1;
+    function adv(){ SJ.audio.pop&&SJ.audio.pop(); step++; show(); }
+    function show(){
+      if(step>5){ if(prog) prog.textContent='✅ vérifié !'; box.innerHTML='<div class="center pop" style="font-size:46px">✅</div><div class="center" style="font-weight:800;color:#1E8B81;font-size:18px">Humain confirmé !</div>'; SJ.audio.validate&&SJ.audio.validate(); onDone(); return; }
+      if(prog) prog.textContent='Étape '+step+'/5';
+      [s1,s2,s3,s4,s5][step-1]();
+    }
+    function s1(){   // 1 — la case classique
+      box.innerHTML=`<div id="ck" style="background:#fff;border:3px solid #3B2D5E;border-radius:14px;padding:15px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;box-shadow:0 4px 0 #C9BBE8">
+        <div id="ckb" style="width:30px;height:30px;border:3px solid #3B2D5E;border-radius:7px;background:#fff;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:20px"></div>
+        <div style="font-weight:700;font-size:16px;color:#3B2D5E">Je ne suis pas un robot</div><div style="margin-left:auto;font-size:22px">🤖</div></div>`;
+      box.querySelector('#ck').onclick=()=>{ box.querySelector('#ckb').style.background='#2EC4B6'; box.querySelector('#ckb').textContent='✓'; T(adv,180); };
+    }
+    function s2(){   // 2 — sélectionne tous les robots
+      const cells=shuf(['🤖','🤖','🤖','🐱','🍕','👻','🌵','🚀','🐸']); const need=cells.filter(c=>c==='🤖').length; let got=0;
+      box.innerHTML=`<div class="center" style="font-size:14px;font-weight:800">Sélectionne tous les 🤖</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">${cells.map((c,i)=>`<button class="capc" data-i="${i}" data-c="${c}" style="aspect-ratio:1;border:3px solid #3B2D5E;border-radius:12px;background:#fff;font-size:26px;cursor:pointer;font-family:inherit">${c}</button>`).join('')}</div>`;
+      box.querySelectorAll('.capc').forEach(b=> b.onclick=()=>{ if(b.dataset.ok) return; if(b.dataset.c==='🤖'){ b.dataset.ok='1'; b.style.background='#2EC4B6'; b.style.outline='3px solid #FFC93C'; got++; SJ.audio.tick&&SJ.audio.tick(); if(got>=need) T(adv,150); } else { b.style.animation='shake .3s'; T(()=>b.style.animation='',300); } });
+    }
+    function s3(){   // 3 — recopie le code déformé
+      const cs='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let code=''; for(let i=0;i<4;i++) code+=cs[ri(cs.length)];
+      const styled=code.split('').map(ch=>`<span style="display:inline-block;transform:rotate(${ri(40)-20}deg) skewX(${ri(28)-14}deg);font-size:${26+ri(10)}px;font-weight:800;color:#3B2D5E;margin:0 3px;font-family:Caveat,cursive">${ch}</span>`).join('');
+      box.innerHTML=`<div class="center" style="font-size:14px;font-weight:800">Recopie le code</div><div class="center" style="background:repeating-linear-gradient(8deg,#F4EFFF 0 6px,#fff 6px 12px);border:3px solid #3B2D5E;border-radius:12px;padding:10px">${styled}</div><input id="capcode" class="field" maxlength="4" placeholder="le code…" style="text-align:center;text-transform:uppercase;font-size:22px;font-weight:800;letter-spacing:4px">`;
+      const inp=box.querySelector('#capcode'); if(inp){ inp.focus(); inp.oninput=()=>{ if((inp.value||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===code){ inp.style.borderColor='#2EC4B6'; T(adv,140); } }; }
+    }
+    function s4(){   // 4 — attrape le bouton fuyant
+      box.innerHTML=`<div class="center" style="font-size:14px;font-weight:800">Attrape le robot ! 🏃</div><div id="capz" style="position:relative;height:150px;border:3px dashed #C9BBE8;border-radius:12px;overflow:hidden;background:#FFF8EC"></div>`;
+      const z=box.querySelector('#capz'); const btn=document.createElement('button'); btn.textContent='🤖';
+      btn.style.cssText='position:absolute;width:52px;height:52px;border:3px solid #3B2D5E;border-radius:50%;background:#FFC93C;font-size:25px;cursor:pointer;box-shadow:0 4px 0 #D9A416;left:10px;top:10px';
+      z.appendChild(btn);
+      const move=()=>{ const w=z.clientWidth||280, h=z.clientHeight||150; btn.style.left=ri(Math.max(1,w-56))+'px'; btn.style.top=ri(Math.max(1,h-56))+'px'; };
+      T(move,30); IV(move,760); btn.onclick=(e)=>{ e.stopPropagation(); adv(); };
+    }
+    function s5(){   // 5 — trouve le seul humain
+      const N=9, human=ri(N); const cells=[]; for(let i=0;i<N;i++) cells.push(i===human?'😶':'🤖');
+      box.innerHTML=`<div class="center" style="font-size:14px;font-weight:800">Vite ! Clique le seul 😶 humain</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">${cells.map((c,i)=>`<button class="capc" data-i="${i}" style="aspect-ratio:1;border:3px solid #3B2D5E;border-radius:12px;background:#fff;font-size:26px;cursor:pointer;font-family:inherit">${c}</button>`).join('')}</div>`;
+      box.querySelectorAll('.capc').forEach((b,i)=> b.onclick=()=>{ if(i===human){ b.style.background='#2EC4B6'; adv(); } else { b.style.animation='shake .3s'; T(()=>b.style.animation='',300); } });
+    }
+    show();
   }
   function rPbOver(v){
     const pb=v.pb, o=pb.over||{ranking:[],earned:0,iWon:false};
