@@ -35,6 +35,7 @@ SJ.room = (function(){
   let piCtx=null, piCanvas=null, piIsDrawer=false, piColor='#3B2D5E', piWidth=4, piLast=null, piBuf=[], piRaf=0, piUp=null;
   let ttFuse=null;   // timer de la mèche (host) : volontairement HORS de mClear (survit aux re-render de passage)
   let soloTimer=null;   // timer Solo ! (IA des bots / anti-AFK), géré à la main (hors mClear)
+  let soloMySeat=-1;    // siège du joueur local (pour viser l'animation de pioche)
   const nowMs=()=> (window.performance&&performance.now)?performance.now():Date.now();
 
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -307,6 +308,7 @@ SJ.room = (function(){
     if(m.t==='draw'){ if(!piIsDrawer) piApply(m.segs,m.c,m.w); return; }
     if(m.t==='clear'){ if(!piIsDrawer) piClearCanvas(); return; }
     if(m.t==='ttinput'){ patchTtLive(m.text); return; }   // ce que tape le porteur, en direct
+    if(m.t==='unoanim'){ soloFlyDraw(m.seat, m.n); return; }   // anim de pioche / +2 / +4 chez les invités
   }
   function guestOnClose(){ U().toast('Connexion à l\'hôte perdue'); quitToHome(); }
   // affiche en direct (lettre par lettre + son) ce que tape le porteur, côté spectateurs
@@ -1369,7 +1371,7 @@ SJ.room = (function(){
   function soloCount(i){ return M.cards[i]?M.cards[i].length:0; }
   function soloStep(turn,steps){ const n=M.seats.length; return (((turn+M.dir*steps)%n)+n)%n; }
   function soloDrawCard(){ if(M.deck.length===0){ if(M.discard.length<=1) return null; const top=M.discard.pop(); M.deck=SJ.SOLO.shuffle(M.discard); M.discard=[top]; } return M.deck.pop()||null; }   // pioche, remélange la défausse si vide
-  function soloGive(i,n){ for(let k=0;k<n;k++){ const c=soloDrawCard(); if(c) M.cards[i].push(c); } }
+  function soloGive(i,n){ let got=0; for(let k=0;k<n;k++){ const c=soloDrawCard(); if(c){ M.cards[i].push(c); got++; } } if(got>0) M._anim={seat:i,n:got}; }   // +2/+4 : anim de pioche vers la victime
   function soloDeal(){ M.deck=SJ.SOLO.shuffle(SJ.SOLO.makeDeck()); M.cards={};
     M.seats.forEach((s,i)=>{ M.cards[i]=M.deck.splice(0,7); });
     let ti=M.deck.findIndex(c=>c.color!=='W'&&['skip','rev','+2','+4'].indexOf(c.val)<0); if(ti<0) ti=0;   // 1re défausse = un chiffre
@@ -1390,8 +1392,8 @@ SJ.room = (function(){
     M.turn=soloStep(M.turn, skip?2:1); }
   function soloWin(seat){ clearSolo(); M.winnerSeat=seat; M.message='';
     M.seats.forEach((s,i)=>{ if(!s.bot){ const win=(i===seat); M.coins[s.id]=(M.coins[s.id]||0)+(win?15:3); const p=players.find(x=>x.id===s.id); if(p&&win) p.score+=1; } });
-    hostRefresh(); }
-  function soloAfter(seat){ M.drawn=null; if(soloCount(seat)===0){ soloWin(seat); return; } hostRefresh(); scheduleSoloAI(); }
+    hostRefresh(); soloFireAnim(); }
+  function soloAfter(seat){ M.drawn=null; if(soloCount(seat)===0){ soloWin(seat); return; } hostRefresh(); soloFireAnim(); scheduleSoloAI(); }
   function scheduleSoloAI(){ clearSolo(); if(!M||phase!=='soloplay'||M.winnerSeat>=0||M.needColor) return;
     if(M.seats[M.turn].bot){ soloTimer=setTimeout(()=>{ soloTimer=null; soloAImove(); }, 1100); }
     else { soloTimer=setTimeout(()=>{ soloTimer=null; soloAutoPass(M.turn); }, 45000); } }
@@ -1401,15 +1403,15 @@ SJ.room = (function(){
       M.message=M.seats[t].name+' pose '+SJ.SOLO.label(card)+' ('+SJ.SOLO.CMAP[M.activeColor].name+')';
     } else { soloResolve(card); M.message=M.seats[t].name+' pose '+SJ.SOLO.label(card); }
     if(hand.length===0){ soloWin(t); return; } if(hand.length===1) M.message=M.seats[t].name+' crie UNO ! 🔔';
-    hostRefresh(); scheduleSoloAI(); }
+    hostRefresh(); soloFireAnim(); scheduleSoloAI(); }
   function soloAImove(){ if(!M||phase!=='soloplay'||M.winnerSeat>=0||M.needColor) return; const t=M.turn; if(!M.seats[t].bot) return; const hand=M.cards[t];
     let idx=-1; for(let i=0;i<hand.length;i++){ if(hand[i].color!=='W' && SJ.SOLO.playable(hand[i],M.activeColor,M.top)){ idx=i; break; } }
     if(idx<0){ for(let i=0;i<hand.length;i++){ if(hand[i].color==='W'){ idx=i; break; } } }   // sinon un joker
     if(idx>=0){ soloBotPlay(t, idx); return; }
-    const c=soloDrawCard(); if(c){ hand.push(c); if(SJ.SOLO.playable(c,M.activeColor,M.top)){ soloBotPlay(t, hand.length-1); return; } }
-    M.message=M.seats[t].name+' pioche 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); scheduleSoloAI(); }
+    const c=soloDrawCard(); if(c){ hand.push(c); M._anim={seat:t,n:1}; if(SJ.SOLO.playable(c,M.activeColor,M.top)){ soloBotPlay(t, hand.length-1); return; } }
+    M.message=M.seats[t].name+' pioche 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); soloFireAnim(); scheduleSoloAI(); }
   function soloAutoPass(seat){ if(!M||phase!=='soloplay'||M.turn!==seat||M.seats[seat].bot||M.winnerSeat>=0) return;
-    if(M.drawn==null){ const c=soloDrawCard(); if(c) M.cards[seat].push(c); } M.drawn=null; M.message=M.seats[seat].name+' (absent) passe 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); scheduleSoloAI(); }
+    if(M.drawn==null){ const c=soloDrawCard(); if(c){ M.cards[seat].push(c); M._anim={seat,n:1}; } } M.drawn=null; M.message=M.seats[seat].name+' (absent) passe 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); soloFireAnim(); scheduleSoloAI(); }
   function soloPlay(id, idx){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return;
     const seat=soloSeatOf(id); if(seat<0||seat!==M.turn) return; const hand=M.cards[seat]; if(!hand||idx<0||idx>=hand.length) return;
     const card=hand[idx]; if(!SJ.SOLO.playable(card,M.activeColor,M.top)) return;
@@ -1419,9 +1421,9 @@ SJ.room = (function(){
     if(hand.length===1) M.message='Plus qu\'une carte — crie UNO ! 🔔';
     soloAfter(seat); }
   function soloDraw(id){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.turn||M.seats[seat].bot||M.drawn!=null) return;
-    clearSolo(); const c=soloDrawCard(); if(c) M.cards[seat].push(c);
-    if(c && SJ.SOLO.playable(c,M.activeColor,M.top)){ M.drawn=M.cards[seat].length-1; M.message='Tu as pioché — joue-la ou passe 👇'; hostRefresh(); scheduleSoloAI(); }
-    else { M.drawn=null; M.message='Tu pioches et passes 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); scheduleSoloAI(); } }
+    clearSolo(); const c=soloDrawCard(); if(c){ M.cards[seat].push(c); M._anim={seat,n:1}; }
+    if(c && SJ.SOLO.playable(c,M.activeColor,M.top)){ M.drawn=M.cards[seat].length-1; M.message='Tu as pioché — joue-la ou passe 👇'; hostRefresh(); soloFireAnim(); scheduleSoloAI(); }
+    else { M.drawn=null; M.message='Tu pioches et passes 🃏'; M.turn=soloStep(M.turn,1); hostRefresh(); soloFireAnim(); scheduleSoloAI(); } }
   function soloPass(id){ if(phase!=='soloplay'||!M||M.winnerSeat>=0||M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.turn||M.seats[seat].bot||M.drawn==null) return;
     clearSolo(); M.drawn=null; M.message='Tu passes ton tour ⏭️'; M.turn=soloStep(M.turn,1); hostRefresh(); scheduleSoloAI(); }
   function soloChooseColor(id, c){ if(phase!=='soloplay'||!M||!M.needColor) return; const seat=soloSeatOf(id); if(seat!==M.needColorSeat) return; if(SJ.SOLO.COLORS.indexOf(c)<0) return;
@@ -1431,7 +1433,7 @@ SJ.room = (function(){
     if(soloCount(seat)===1){ M.message='🔔 '+(M.seats[seat].id===myId?'Tu cries':M.seats[seat].name+' crie')+' UNO !'; hostRefresh(); } else U().toast('Crie UNO quand il te reste 1 carte 🙂'); }
 
   const SOLO_EMPTY='<span style="color:rgba(255,255,255,.7);font-weight:700">tu regardes la partie 👀</span>';
-  function soloRingHTML(s){ return s.ring.map(pl=>`<div style="position:absolute;top:${pl.top};left:${pl.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;width:84px">
+  function soloRingHTML(s){ return s.ring.map((pl,i)=>`<div data-soloseat="${i}" style="position:absolute;top:${pl.top};left:${pl.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;width:84px">
       <div style="position:relative;display:flex;align-items:center;justify-content:center">
         <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(-14deg) translateX(-7px)"></div>
         <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(14deg) translateX(7px)"></div>
@@ -1456,6 +1458,20 @@ SJ.room = (function(){
     const dx=(d.left+d.width/2)-(a.left+a.width/2), dy=(d.top+d.height/2)-(a.top+a.height/2);
     requestAnimationFrame(()=>{ clone.style.transform='translate('+dx+'px,'+dy+'px) rotate(-6deg) scale(1.05)'; clone.style.opacity='.25'; });
     setTimeout(()=>{ if(clone.parentNode) clone.remove(); }, 340); }
+  // animation : n dos-de-carte volent de la pioche vers le joueur `seat` (sa main si c'est moi, sinon son jeton)
+  function soloFlyDraw(seat, n){ const from=app().querySelector('#solodraw'); if(!from) return;
+    const to=(seat===soloMySeat)?app().querySelector('#solo-hand'):app().querySelector('[data-soloseat="'+seat+'"]'); if(!to) return;
+    const a=from.getBoundingClientRect(), b=to.getBoundingClientRect();
+    const cx=a.left+a.width/2, cy=a.top+a.height/2, tx=b.left+b.width/2, ty=b.top+b.height/2, cnt=Math.min(n||1,5);
+    for(let k=0;k<cnt;k++){ const card=document.createElement('div');
+      card.style.cssText='position:fixed;left:'+(cx-28)+'px;top:'+(cy-42)+'px;width:56px;height:84px;border-radius:12px;border:3px solid #3B2D5E;background:linear-gradient(135deg,#6A4BD6,#9B5DE5);z-index:300;opacity:1;transition:transform .44s cubic-bezier(.3,.7,.3,1),opacity .44s;pointer-events:none;display:flex;align-items:center;justify-content:center';
+      card.innerHTML='<div style="font-family:Caveat,cursive;font-size:18px;font-weight:700;color:#fff;transform:rotate(-12deg)">UNO</div>';
+      document.body.appendChild(card);
+      const delay=k*95, dx=tx-cx+(Math.random()*26-13), dy=ty-cy, rot=Math.random()*30-15;
+      setTimeout(()=>{ requestAnimationFrame(()=>{ card.style.transform='translate('+dx+'px,'+dy+'px) rotate('+rot+'deg) scale(.7)'; card.style.opacity='.18'; }); }, delay);
+      setTimeout(()=>{ if(card.parentNode) card.remove(); }, delay+480); }
+    SJ.audio.tick&&SJ.audio.tick(); }
+  function soloFireAnim(){ if(!M||!M._anim) return; const seat=M._anim.seat, n=M._anim.n; M._anim=null; if(net) net.broadcast({t:'unoanim',seat,n}); soloFlyDraw(seat,n); }
   function soloWire(v){ const s=v.solo;
     const dr=$('#solodraw'); if(dr) dr.onclick=()=>{ if(!s.drawEnabled) return; SJ.audio.click(); act('solodraw'); };
     app().querySelectorAll('.solocard').forEach(b=> b.onclick=()=>{ if(b.disabled) return; soloFly(b); SJ.audio.pop(); act('soloplay',{i:+b.dataset.i}); });
@@ -1465,7 +1481,7 @@ SJ.room = (function(){
     const ag=$('#soloagain'); if(ag) ag.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('soloagain'); };
   }
   function soloClaim(s){ if(s.winner && !coinsClaimed){ SJ.store.addCoins(s.winner.earned||0); coinsClaimed=true; if(s.winner.you){ SJ.audio.win(); U().confetti(50); } else { SJ.audio.lose&&SJ.audio.lose(); } } }
-  function patchSolo(v){ const s=v.solo; const q=sel=>app().querySelector(sel);   // mise à jour SANS tout reconstruire (plus de flash)
+  function patchSolo(v){ const s=v.solo; const q=sel=>app().querySelector(sel); soloMySeat=s.ring.findIndex(p=>p.you);   // mise à jour SANS tout reconstruire (plus de flash)
     const ac=q('#solo-active'); if(ac) ac.style.background=s.activeColorHex;
     const dir=q('#solo-dir'); if(dir) dir.textContent=s.dir===1?'↻':'↺';
     const rnd=q('#solo-round'); if(rnd) rnd.textContent='🎴 Manche '+s.round;
@@ -1479,7 +1495,7 @@ SJ.room = (function(){
     const ov=q('#solo-overlays'); if(ov) ov.innerHTML=soloOverlaysHTML(s,v.iAmHost);
     soloWire(v); soloClaim(s);
   }
-  function rSolo(v){ const s=v.solo;
+  function rSolo(v){ const s=v.solo; soloMySeat=s.ring.findIndex(p=>p.you);
     mMount(`<section class="screen"><div class="stage" style="max-width:560px">
       <div style="position:relative;background:radial-gradient(circle at 50% 42%,#2EC4B6 0%,#1E8B81 100%);border:3px solid #3B2D5E;border-radius:30px;box-shadow:0 10px 0 #176258;padding:clamp(14px,3vw,24px);display:flex;flex-direction:column;gap:13px;overflow:hidden;width:100%">
         <div class="row between wrap" style="gap:10px">
