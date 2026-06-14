@@ -458,7 +458,7 @@ SJ.room = (function(){
   }
   function gcVotersHTML(g){ return g.voters.length
     ? `<div style="display:flex">${g.voters.map(vt=>`<span style="width:26px;height:26px;border-radius:50%;border:2px solid #3B2D5E;background:${vt.color};margin-left:-6px;display:flex;align-items:center;justify-content:center;font-size:13px">${esc(vt.emoji)}</span>`).join('')}</div>`
-    : `<span style="font-size:12px;font-weight:700;opacity:.8">sois le 1er 🙌</span>`; }
+    : `<span class="gc-empty" style="font-size:12px;font-weight:700;opacity:.8;white-space:nowrap">sois le 1er 🙌</span>`; }
   function gcLeadHTML(g){ return g.isLeader?`<span style="background:#FFC93C;color:#3B2D5E;border:2px solid #3B2D5E;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800">👑 en tête</span>`:''; }
   function gcRingHTML(g){ return g.isWinner?`<div style="position:absolute;inset:-3px;border:4px solid #FFC93C;border-radius:22px;box-shadow:0 0 0 5px rgba(255,201,60,.45);pointer-events:none"></div><div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:32px" class="pop">👑</div>`:''; }
   function patchSalon(v){

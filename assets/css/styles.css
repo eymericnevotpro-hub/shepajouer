@@ -267,7 +267,9 @@ html{ scrollbar-gutter: stable; }            /* évite le saut quand une scrollb
   .gc-name{ font-size:15px; }
   .gc-tag{ font-size:11px; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .gc-count{ font-size:12px; padding:1px 8px; }
+  .gc-voters{ min-width:0; overflow:hidden; }   /* pas de débordement sur la petite carte */
   .gc-voters span{ width:21px !important; height:21px !important; margin-left:-6px !important; font-size:11px !important; }
+  .gc-empty{ display:none; }                    /* « sois le 1er » : caché sur mobile (trop étroit) */
   .gc-soon{ font-size:10px; padding:0 7px; }
 
   /* la liste détaillée passe DANS la navbar (bandeau d'avatars) → on masque la carte autonome */
