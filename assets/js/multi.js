@@ -1314,7 +1314,7 @@ SJ.room = (function(){
         <div style="font-size:13px;font-weight:800;color:${pl.holder?'#FF5D73':'#3B2D5E'};max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
         <div style="font-size:11px;letter-spacing:1px">${pl.hearts}</div>${live}</div>`; }).join('');
     return `<div style="position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center;margin:48px 0 54px">
-      <div id="tt-bomb" style="position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,${boom?'#7A2A3A,#3A1622':'#5A4A7A,#2A2440'});border:4px solid #3B2D5E;box-shadow:0 8px 0 #1F1638,inset 0 -6px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px${boom?';animation:shake .3s ease-in-out infinite':''}">
+      <div id="tt-bomb" style="position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,${boom?'#7A2A3A,#3A1622':'#5A4A7A,#2A2440'});border:4px solid #3B2D5E;box-shadow:0 8px 0 #1F1638,inset 0 -6px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
         <div id="tt-spark" style="position:absolute;top:-16%;right:6%;font-size:28px;animation:sparkle .5s ease-in-out infinite">${tt.running&&!boom?'🔥':''}</div>
         ${boom?'<div class="pop" style="font-size:56px;line-height:1">💥</div>':`<div style="font-size:12px;font-weight:800;color:#FFC93C;letter-spacing:1px">UN MOT EN</div><div style="font-size:clamp(28px,9vw,46px);font-weight:800;color:#fff;line-height:.9">${esc(tt.syllable)}</div>`}
       </div>${ring}
@@ -1369,16 +1369,16 @@ SJ.room = (function(){
     }
   }
   function rTtBoom(v){ const b=v.tt.boom||{};
-    // la bombe explose AU CENTRE (elle ne va pas vers le joueur) + secousse d'écran pour tous. L'écran rouge n'apparaît QUE pour le joueur éliminé.
-    const overlay = (b.you && b.out)
-      ? `<div style="position:fixed;inset:0;background:linear-gradient(170deg,rgba(255,93,115,.97),rgba(194,58,80,.97));z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;animation:cfgFade .18s ease"><div style="text-align:center;color:#fff;display:flex;flex-direction:column;gap:14px;align-items:center"><div style="font-size:88px;animation:shake .4s ease-in-out infinite">💥</div><div style="font-size:46px;font-weight:800;text-shadow:0 4px 0 rgba(0,0,0,.28)">ÉLIMINÉ·E</div><div style="background:rgba(255,255,255,.96);border:3px solid #3B2D5E;border-radius:18px;padding:12px 20px;color:#3B2D5E;font-size:18px;font-weight:800">💀 Tu n'as plus de vies</div></div></div>`
+    // la bombe explose AU CENTRE (immobile, pas d'aller-retour). Le joueur QUI EXPLOSE voit l'écran rouge (éliminé OU « perd une vie ») ; les autres voient l'explosion au centre.
+    const overlay = b.you
+      ? `<div style="position:fixed;inset:0;background:linear-gradient(170deg,rgba(255,93,115,.97),rgba(194,58,80,.97));z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;animation:cfgFade .18s ease"><div style="text-align:center;color:#fff;display:flex;flex-direction:column;gap:14px;align-items:center"><div class="pop" style="font-size:88px;line-height:1">💥</div><div style="font-size:44px;font-weight:800;text-shadow:0 4px 0 rgba(0,0,0,.28)">${b.out?'ÉLIMINÉ·E':'BOUM !'}</div><div style="background:rgba(255,255,255,.96);border:3px solid #3B2D5E;border-radius:18px;padding:12px 20px;color:#3B2D5E;font-size:18px;font-weight:800">${b.out?'💀 Tu n\'as plus de vies':'Tu perds une vie&nbsp;!'}<div style="font-size:18px;margin-top:5px;letter-spacing:1px">${b.hearts||''}</div></div></div></div>`
       : '';
     mMount(`<section class="screen"><div class="stage" style="max-width:560px;gap:14px">
       <div class="row between"><span class="pill" style="background:#3B2D5E;color:#fff;font-weight:800">Manche ${v.tt.round}</span><span style="font-size:15px;font-weight:700;color:#7A6BA8">${v.tt.aliveCount} en vie</span></div>
       ${ttCircleHTML(v.tt, true)}
       <div class="center" style="font-size:17px;font-weight:800;color:#C23A50">💥 ${esc(b.name||'?')} ${b.out?'est éliminé·e 💀':'explose — perd une vie'}</div>
     </div></section>${overlay}`);
-    SJ.audio.boom&&SJ.audio.boom(); ttShake();   // secousse d'écran : la bombe a pété au centre
+    SJ.audio.boom&&SJ.audio.boom();
     if(b.you && b.out) mAfter(420, ()=>SJ.audio.lose&&SJ.audio.lose());
   }
   function rTtOver(v){ const o=v.tt.over||{};
