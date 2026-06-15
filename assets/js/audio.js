@@ -63,6 +63,7 @@ SJ.audio = (function(){
     nope(){ tone(196,.13,{type:'sawtooth',gain:.14,slideTo:120}); noise(.05,{gain:.05,hp:300}); },  // « c'est pas bon »
     win(){ seq([[523,.12,0],[659,.12,.1],[784,.12,.2],[1047,.28,.3]]); noise(.4,{gain:.06,delay:.3,hp:300}); },
     lose(){ seq([[392,.16,0,'sawtooth'],[330,.16,.14,'sawtooth'],[247,.3,.28,'sawtooth']]); },
+    boom(){ noise(.5,{gain:.3,hp:90}); tone(150,.45,{type:'sawtooth',gain:.28,slideTo:40}); tone(70,.55,{type:'sine',gain:.24,slideTo:28}); },  // grosse explosion de la bombe
   };
   return API;
 })();

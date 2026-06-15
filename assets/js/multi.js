@@ -229,7 +229,7 @@ SJ.room = (function(){
           syllable:syl.s, iAmHolder:(M.holder===forId), holderName:holder?holder.name:'?',
           feedback:M.feedback, feedbackKind:M.feedbackKind,
           ring:players.map(p=>{ const dead=(M.lives[p.id]||0)<=0; return {name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.color,
-            dead, holder:(p.id===M.holder&&!dead), you:(p.id===forId),
+            dead, holder:(p.id===M.holder&&!dead), exploded:(phase==='ttboom'&&p.id===M.holder), you:(p.id===forId),
             hearts: dead?'💀':('❤️'.repeat(M.lives[p.id]||0)+'🖤'.repeat(Math.max(0,3-(M.lives[p.id]||0)))) }; }) };
         if(phase==='ttboom'){ const p=players.find(x=>x.id===M.holder); v.tt.boom={ name:M.boomName, emoji:p?p.emoji:'😵', color:p?p.color:'#FF5D73', out:(M.lives[M.holder]||0)<=0, you:(M.holder===forId),
           avatar:p?p.avatar:null, hat:p?p.hat:null, hatPos:p?p.hatPos:null,
@@ -1245,7 +1245,8 @@ SJ.room = (function(){
     M.running=true; M.feedback=''; M.feedbackKind=''; M.used={};
     curKey=null; hostRefresh();
     // mèche TOTALEMENT aléatoire et CACHÉE : un seul timer, aucune barre, aucune info de durée
-    const totalMs = 2800 + Math.floor(Math.random()*13200);   // 2,8 → 16 s
+    // la MÊME bombe continue de tourner quand on se la passe (comme BombParty) → une manche = une vie de bombe
+    const totalMs = 8000 + Math.floor(Math.random()*16000);   // 8 → 24 s, totalement aléatoire
     if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; }
     ttFuse=setTimeout(()=>{ ttFuse=null; if(M&&phase==='ttplay'&&M.running) ttExplode(); }, totalMs);
   }
@@ -1265,7 +1266,7 @@ SJ.room = (function(){
     const p=players.find(x=>x.id===h); M.boomName=p?p.name:'?';
     const alive=ttAlive();
     if(alive.length<=1){ ttGameOver(alive[0]?alive[0].id:null); return; }
-    phase='ttboom'; curKey=null; SJ.audio.lose&&SJ.audio.lose(); hostRefresh();
+    phase='ttboom'; curKey=null; hostRefresh();   // le son d'explosion est joué côté rendu (pour tout le monde)
     mAfter(2600, ()=>{ if(phase!=='ttboom'||!M) return;
       M.round++; M.holder=ttNextHolder(h); M.sylIdx=ttPickSyl(); M.feedback=''; M.feedbackKind=''; M.running=false;
       phase='ttplay'; ttLight(); });   // relance auto la nouvelle manche
@@ -1276,35 +1277,40 @@ SJ.room = (function(){
     players.forEach(p=>{ const win=p.id===winnerId; M.coins[p.id]=(M.coins[p.id]||0)+(M.round*3)+(win?20:0); if(win) p.score+=1; });
     curKey=null; hostRefresh();
   }
-  function ttRingPos(i,n){ const ang=(-90+i*(360/n))*Math.PI/180, r=44; return { left:(50+r*Math.cos(ang))+'%', top:(50+r*Math.sin(ang))+'%' }; }
-  function ttShake(){ const s=app().querySelector('.stage'); if(s){ s.style.animation='none'; void s.offsetWidth; s.style.animation='shake .35s'; } }   // « c'est pas bon » : tout se secoue
-  function rTtPlay(v){
-    const tt=v.tt, n=tt.ring.length;
-    const ringHTML=tt.ring.map((pl,i)=>{ const pos=ttRingPos(i,n); return `<div style="position:absolute;top:${pos.top};left:${pos.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;width:78px">
-        <div style="position:relative;width:56px;height:56px;border-radius:50%;border:4px solid ${pl.holder?'#FF5D73':'#3B2D5E'};background:${pl.holder?'#FFF1C9':'#fff'};display:flex;align-items:center;justify-content:center;box-shadow:${pl.holder?'0 0 0 5px rgba(255,93,115,.35),0 4px 0 #C9BBE8':'0 4px 0 #C9BBE8'};opacity:${pl.dead?'.5':'1'}">
+  function ttRingPos(i,n){ const ang=(-90+i*(360/n))*Math.PI/180, r=38; return { left:(50+r*Math.cos(ang))+'%', top:(50+r*Math.sin(ang))+'%' }; }
+  // cercle partagé par le jeu et l'explosion : bombe au centre + jetons autour. boom=true → l'explosion s'anime sur le jeton du porteur (tout le monde la voit)
+  function ttCircleHTML(tt, boom){ const n=tt.ring.length;
+    const ring=tt.ring.map((pl,i)=>{ const pos=ttRingPos(i,n); const up=parseFloat(pos.top)<46; const burst=boom&&(pl.holder||pl.exploded);
+      const live=(!boom&&pl.holder&&!pl.you&&tt.running)
+        ? `<div id="tt-live" style="position:absolute;left:50%;transform:translateX(-50%);${up?'bottom:100%;margin-bottom:7px':'top:100%;margin-top:7px'};z-index:7;background:#3B2D5E;color:#fff;border:2px solid #fff;border-radius:12px;padding:4px 11px;font-size:16px;font-weight:800;letter-spacing:1px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 0 rgba(0,0,0,.3)"><span style="opacity:.45;font-weight:700">…</span></div>` : '';
+      return `<div style="position:absolute;top:${pos.top};left:${pos.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;width:78px">
+        <div style="position:relative;width:56px;height:56px;border-radius:50%;border:4px solid ${pl.holder?'#FF5D73':'#3B2D5E'};background:${burst?'#FFD9DF':(pl.holder?'#FFF1C9':'#fff')};display:flex;align-items:center;justify-content:center;box-shadow:${pl.holder?'0 0 0 5px rgba(255,93,115,.35),0 4px 0 #C9BBE8':'0 4px 0 #C9BBE8'};opacity:${pl.dead?'.5':'1'}${burst?';animation:shake .35s ease-in-out infinite':''}">
           ${U().ava({avatar:pl.avatar,emoji:pl.emoji,hat:pl.hat,hatPos:pl.hatPos,bg:pl.bg},44)}
-          ${pl.holder?'<div style="position:absolute;bottom:-9px;right:-9px;font-size:23px;animation:floaty 1.2s ease-in-out infinite">💣</div>':''}
-          ${pl.dead?'<div style="position:absolute;inset:0;border-radius:50%;background:rgba(59,45,94,.55);display:flex;align-items:center;justify-content:center;font-size:23px">💀</div>':''}
+          ${burst?'<div class="pop" style="position:absolute;font-size:46px">💥</div>':(pl.holder&&!boom?'<div style="position:absolute;bottom:-9px;right:-9px;font-size:23px;animation:floaty 1.2s ease-in-out infinite">💣</div>':'')}
+          ${pl.dead&&!burst?'<div style="position:absolute;inset:0;border-radius:50%;background:rgba(59,45,94,.55);display:flex;align-items:center;justify-content:center;font-size:23px">💀</div>':''}
         </div>
         <div style="font-size:13px;font-weight:800;color:${pl.holder?'#FF5D73':'#3B2D5E'};max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
-        <div style="font-size:11px;letter-spacing:1px">${pl.hearts}</div></div>`; }).join('');
+        <div style="font-size:11px;letter-spacing:1px">${pl.hearts}</div>${live}</div>`; }).join('');
+    return `<div style="position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center;margin:48px 0 54px">
+      <div id="tt-bomb" style="position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,${boom?'#7A2A3A,#3A1622':'#5A4A7A,#2A2440'});border:4px solid #3B2D5E;box-shadow:0 8px 0 #1F1638,inset 0 -6px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px${boom?';animation:shake .3s ease-in-out infinite':''}">
+        <div id="tt-spark" style="position:absolute;top:-16%;right:6%;font-size:28px;animation:sparkle .5s ease-in-out infinite">${tt.running&&!boom?'🔥':''}</div>
+        ${boom?'<div style="font-size:38px">💥</div>':`<div style="font-size:12px;font-weight:800;color:#FFC93C;letter-spacing:1px">UN MOT EN</div><div style="font-size:clamp(28px,9vw,46px);font-weight:800;color:#fff;line-height:.9">${esc(tt.syllable)}</div>`}
+      </div>${ring}
+    </div>`; }
+  function ttShake(){ const s=app().querySelector('.stage'); if(s){ s.style.animation='none'; void s.offsetWidth; s.style.animation='shake .35s'; } }   // « c'est pas bon » : tout se secoue
+  function rTtPlay(v){
+    const tt=v.tt;
     const fbCol=tt.feedbackKind==='good'?'#1E8B81':(tt.feedbackKind==='bad'?'#FF5D73':'#A99CC9');
     const cons = (tt.iAmHolder && tt.running) ? `<div class="card" style="background:#fff;border:3px solid #3B2D5E;border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 6px 0 #C9BBE8">
         <div style="font-size:17px;font-weight:800">À toi ! <span style="color:#7A6BA8;font-weight:700;font-size:14px">un mot avec « ${esc(tt.syllable)} »</span></div>
         <div class="row gap8"><input id="tt-input" class="field" placeholder="tape un mot…" maxlength="24" style="flex:1;text-transform:uppercase;font-size:20px;font-weight:800"><button class="btn btn--teal" id="tt-send" style="width:62px">✓</button></div>
         <div id="tt-fb" style="min-height:22px;font-size:15px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div>
       </div>`
-      : (tt.running ? `<div class="card sh-pink" style="text-align:center;display:flex;flex-direction:column;gap:6px"><div style="font-size:18px;font-weight:800">💣 Au tour de <b style="color:#FF5D73">${esc(tt.holderName)}</b></div><div style="font-size:13px;font-weight:700;color:#7A6BA8">un mot avec « ${esc(tt.syllable)} »</div><div id="tt-live" style="font-size:26px;font-weight:800;color:#3B2D5E;letter-spacing:2px;min-height:34px;word-break:break-word"><span style="opacity:.45;font-weight:700">…</span></div><div id="tt-fb" style="min-height:18px;font-size:14px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div></div>`
+      : (tt.running ? `<div class="center" style="font-size:16px;font-weight:800;color:#7A6BA8">💣 c'est au tour de <b style="color:#FF5D73">${esc(tt.holderName)}</b> — un mot avec « ${esc(tt.syllable)} »</div>`
         : (v.iAmHost ? `<button class="btn btn--coral lg block" id="tt-light">🔥 Allumer la mèche</button>` : `<div class="center muted" style="font-weight:700">⏳ en attente que l'hôte allume la mèche…</div>`));
     mMount(`<section class="screen"><div class="stage" style="max-width:560px;gap:14px">
       <div class="row between"><span class="pill" style="background:#3B2D5E;color:#fff;font-weight:800">Manche ${tt.round}</span><span style="font-size:15px;font-weight:700;color:#7A6BA8">${tt.aliveCount} en vie</span></div>
-      <div style="position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center;margin:30px 0 44px">
-        <div id="tt-bomb" style="position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,#5A4A7A,#2A2440);border:4px solid #3B2D5E;box-shadow:0 8px 0 #1F1638,inset 0 -6px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
-          <div id="tt-spark" style="position:absolute;top:-16%;right:6%;font-size:28px;animation:sparkle .5s ease-in-out infinite">${tt.running?'🔥':''}</div>
-          <div style="font-size:12px;font-weight:800;color:#FFC93C;letter-spacing:1px">UN MOT EN</div>
-          <div style="font-size:clamp(28px,9vw,46px);font-weight:800;color:#fff;line-height:.9">${esc(tt.syllable)}</div>
-        </div>${ringHTML}
-      </div>
+      ${ttCircleHTML(tt,false)}
       ${tt.running?'<div class="center" style="font-size:14px;font-weight:800;color:#C23A50">🔥 Mèche allumée — ça peut péter À TOUT MOMENT 💥</div>':''}
       ${cons}
     </div></section>`);
@@ -1324,27 +1330,17 @@ SJ.room = (function(){
     }
   }
   function rTtBoom(v){ const b=v.tt.boom||{};
-    if(b.you){   // LE perdant : grosse animation rouge
-      mMount(`<section class="screen"><div class="stage" style="max-width:400px;align-items:center;text-align:center;gap:16px">
-        <div class="card" style="background:linear-gradient(170deg,#FF5D73,#C23A50);border:3px solid #3B2D5E;border-radius:30px;box-shadow:0 10px 0 #8A2438;padding:26px;color:#fff;display:flex;flex-direction:column;gap:13px;align-items:center;width:100%">
-          <div style="font-size:84px;animation:shake .4s ease-in-out infinite">💥</div>
-          <div style="font-size:42px;font-weight:800;text-shadow:0 4px 0 rgba(0,0,0,.25)">BOUM !</div>
-          <div style="background:rgba(255,255,255,.96);border:3px solid #3B2D5E;border-radius:18px;padding:14px 18px;color:#3B2D5E;font-size:19px;font-weight:800">${b.out?'Tu es éliminé·e 💀':'Tu perds une vie !'}<div style="font-size:16px;color:#C23A50;margin-top:4px">${b.hearts||''}</div></div>
-          <div style="font-size:15px;font-weight:700;color:#FFE9EE">Nouvelle mèche, nouveau bout de mot…</div>
-        </div></div></section>`);
-      SJ.audio.lose&&SJ.audio.lose();
-    } else {     // les AUTRES : on voit juste le joueur exploser, pas d'animation rouge
-      mMount(`<section class="screen"><div class="stage" style="max-width:420px;align-items:center;text-align:center;gap:14px">
-        <div class="card sh-purple" style="display:flex;flex-direction:column;gap:10px;align-items:center;width:100%">
-          <div style="position:relative;width:72px;height:72px;display:flex;align-items:center;justify-content:center">
-            <span style="opacity:${b.out?'.5':'1'}">${U().ava({avatar:b.avatar,emoji:b.emoji,hat:b.hat,hatPos:b.hatPos,bg:b.color},64)}</span>
-            <div class="pop" style="position:absolute;font-size:46px">💥</div>
-          </div>
-          <div style="font-size:21px;font-weight:800">${esc(b.name||'?')} ${b.out?'est éliminé·e 💀':'explose 💣'}</div>
-          <div style="font-size:16px;font-weight:800;color:#C23A50">${b.hearts||''} → −1 vie</div>
-        </div></div></section>`);
-      SJ.audio.pop&&SJ.audio.pop();
-    }
+    // tout le monde voit l'explosion DANS le cercle (sur le jeton du porteur). L'écran rouge n'apparaît QUE pour le joueur éliminé.
+    const overlay = (b.you && b.out)
+      ? `<div style="position:fixed;inset:0;background:linear-gradient(170deg,rgba(255,93,115,.97),rgba(194,58,80,.97));z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;animation:cfgFade .18s ease"><div style="text-align:center;color:#fff;display:flex;flex-direction:column;gap:14px;align-items:center"><div style="font-size:88px;animation:shake .4s ease-in-out infinite">💥</div><div style="font-size:46px;font-weight:800;text-shadow:0 4px 0 rgba(0,0,0,.28)">ÉLIMINÉ·E</div><div style="background:rgba(255,255,255,.96);border:3px solid #3B2D5E;border-radius:18px;padding:12px 20px;color:#3B2D5E;font-size:18px;font-weight:800">💀 Tu n'as plus de vies</div></div></div>`
+      : '';
+    mMount(`<section class="screen"><div class="stage" style="max-width:560px;gap:14px">
+      <div class="row between"><span class="pill" style="background:#3B2D5E;color:#fff;font-weight:800">Manche ${v.tt.round}</span><span style="font-size:15px;font-weight:700;color:#7A6BA8">${v.tt.aliveCount} en vie</span></div>
+      ${ttCircleHTML(v.tt, true)}
+      <div class="center" style="font-size:17px;font-weight:800;color:#C23A50">💥 ${esc(b.name||'?')} ${b.out?'est éliminé·e 💀':'explose — perd une vie'}</div>
+    </div></section>${overlay}`);
+    SJ.audio.boom&&SJ.audio.boom();
+    if(b.you && b.out) mAfter(420, ()=>SJ.audio.lose&&SJ.audio.lose());
   }
   function rTtOver(v){ const o=v.tt.over||{};
     mMount(`<section class="screen"><div class="stage" style="max-width:400px;align-items:center;text-align:center;gap:14px">
