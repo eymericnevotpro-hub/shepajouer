@@ -34,6 +34,7 @@ SJ.room = (function(){
   let micStream=null, pbAudioTimer=null, pbRaf=0, pbCountTimer=null;
   let piCtx=null, piCanvas=null, piIsDrawer=false, piColor='#3B2D5E', piWidth=4, piLast=null, piBuf=[], piRaf=0, piUp=null;
   let ttFuse=null;   // timer de la mèche (host) : volontairement HORS de mClear (survit aux re-render de passage)
+  let ttKeyHandler=null;   // écouteur clavier physique du porteur (clavier intégré) — retiré/réattaché à chaque rendu
   let soloTimer=null;   // timer Solo ! (IA des bots / anti-AFK), géré à la main (hors mClear)
   let soloMySeat=-1;    // siège du joueur local (pour viser l'animation de pioche)
   const nowMs=()=> (window.performance&&performance.now)?performance.now():Date.now();
@@ -1241,12 +1242,19 @@ SJ.room = (function(){
   }
 
   /* ================= TIC-TAC-MOT (jeu de la bombe) ================= */
+  // dico FR (vrais mots) : chargé paresseusement CÔTÉ HÔTE seulement, quand le jeu démarre (pas dans le chargement initial de tout le monde)
+  let ttDico=null, ttDicoLoading=false;
+  const ttNorm = s => String(s||'').toLowerCase().replace(/œ/g,'oe').replace(/æ/g,'ae').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]/g,'');
+  function ttLoadDico(){ if(ttDico||ttDicoLoading) return; ttDicoLoading=true;
+    fetch('assets/data/dico-fr.txt').then(r=>r.text()).then(txt=>{ const set=new Set(); const lines=txt.split('\n'); for(let i=0;i<lines.length;i++){ const w=ttNorm(lines[i]); if(w.length>=2) set.add(w); } ttDico=set; ttDicoLoading=false; })
+      .catch(()=>{ ttDicoLoading=false; }); }
   function ttAlive(){ return players.filter(p=>(M.lives[p.id]||0)>0); }
   function ttNextHolder(fromId){ const n=players.length; let idx=players.findIndex(p=>p.id===fromId); if(idx<0) idx=0;
     for(let k=0;k<n;k++){ idx=(idx+1)%n; const p=players[idx]; if((M.lives[p.id]||0)>0) return p.id; } return fromId; }
   function ttPickSyl(){ const n=SJ.BOMBSYL.length; let i; do{ i=Math.floor(Math.random()*n); } while(n>1 && i===M.sylIdx); return i; }
   function ttStart(){
     if(players.length<2){ U().toast('Tic-Tac-Mot : il faut au moins 2 joueurs 🙂'); return; }
+    ttLoadDico();   // l'hôte précharge le dico FR (vrais mots) pendant que les joueurs se préparent
     players.forEach(p=>p.score=0);
     M={ gameType:'tictacmot', lives:{}, holder:null, sylIdx:0, round:1, running:false,
         feedback:'', feedbackKind:'', winnerId:null, boomName:'', used:{}, coins:{} };
@@ -1259,18 +1267,19 @@ SJ.room = (function(){
     curKey=null; hostRefresh();
     // mèche TOTALEMENT aléatoire et CACHÉE : un seul timer, aucune barre, aucune info de durée
     // la MÊME bombe continue de tourner quand on se la passe (comme BombParty) → une manche = une vie de bombe
-    const totalMs = 8000 + Math.floor(Math.random()*16000);   // 8 → 24 s, totalement aléatoire
+    const totalMs = 10000 + Math.floor(Math.random()*20000);   // 10 → 30 s, totalement aléatoire
     if(ttFuse){ clearTimeout(ttFuse); ttFuse=null; }
     ttFuse=setTimeout(()=>{ ttFuse=null; if(M&&phase==='ttplay'&&M.running) ttExplode(); }, totalMs);
   }
   function ttSubmit(id, word){
     if(phase!=='ttplay'||!M||!M.running||id!==M.holder) return;
-    const w=String(word||'').toUpperCase().replace(/[^A-ZÀ-Ü]/g,''); const syl=SJ.BOMBSYL[M.sylIdx].s;
+    const raw=String(word||'').trim(); const w=ttNorm(raw); const syl=ttNorm(SJ.BOMBSYL[M.sylIdx].s); const SYL=SJ.BOMBSYL[M.sylIdx].s;
     if(w.length<2){ M.feedback='trop court !'; M.feedbackKind='bad'; hostRefresh(); return; }
-    if(w.indexOf(syl)<0){ M.feedback='il faut « '+syl+' » dedans !'; M.feedbackKind='bad'; hostRefresh(); return; }
+    if(w.indexOf(syl)<0){ M.feedback='il faut « '+SYL+' » dedans !'; M.feedbackKind='bad'; hostRefresh(); return; }
+    if(ttDico && !ttDico.has(w)){ M.feedback='« '+raw.toUpperCase()+' » n\'existe pas 🤔'; M.feedbackKind='bad'; hostRefresh(); return; }   // doit être un VRAI mot du dico
     if(M.used[w]){ M.feedback='déjà dit ! trouve un autre'; M.feedbackKind='bad'; hostRefresh(); return; }
     M.used[w]=true; M.holder=ttNextHolder(M.holder); M.sylIdx=ttPickSyl();
-    M.feedback='✓ '+w+' ! passe au suivant'; M.feedbackKind='good'; SJ.audio.coin&&SJ.audio.coin();
+    M.feedback='✓ '+raw.toUpperCase()+' ! passe au suivant'; M.feedbackKind='good'; SJ.audio.coin&&SJ.audio.coin();
     curKey=null; hostRefresh();   // la mèche CONTINUE (on ne touche pas à ttFuse)
   }
   function ttExplode(){
@@ -1293,31 +1302,38 @@ SJ.room = (function(){
   function ttRingPos(i,n){ const ang=(-90+i*(360/n))*Math.PI/180, r=38; return { left:(50+r*Math.cos(ang))+'%', top:(50+r*Math.sin(ang))+'%' }; }
   // cercle partagé par le jeu et l'explosion : bombe au centre + jetons autour. boom=true → l'explosion s'anime sur le jeton du porteur (tout le monde la voit)
   function ttCircleHTML(tt, boom){ const n=tt.ring.length;
-    const ring=tt.ring.map((pl,i)=>{ const pos=ttRingPos(i,n); const up=parseFloat(pos.top)<46; const burst=boom&&(pl.holder||pl.exploded);
+    const ring=tt.ring.map((pl,i)=>{ const pos=ttRingPos(i,n); const up=parseFloat(pos.top)<46;
       const live=(!boom&&pl.holder&&!pl.you&&tt.running)
         ? `<div id="tt-live" style="position:absolute;left:50%;transform:translateX(-50%);${up?'bottom:100%;margin-bottom:7px':'top:100%;margin-top:7px'};z-index:7;background:#3B2D5E;color:#fff;border:2px solid #fff;border-radius:12px;padding:4px 11px;font-size:16px;font-weight:800;letter-spacing:1px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 0 rgba(0,0,0,.3)"><span style="opacity:.45;font-weight:700">…</span></div>` : '';
       return `<div style="position:absolute;top:${pos.top};left:${pos.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;width:78px">
-        <div style="position:relative;width:56px;height:56px;border-radius:50%;border:4px solid ${pl.holder?'#FF5D73':'#3B2D5E'};background:${burst?'#FFD9DF':(pl.holder?'#FFF1C9':'#fff')};display:flex;align-items:center;justify-content:center;box-shadow:${pl.holder?'0 0 0 5px rgba(255,93,115,.35),0 4px 0 #C9BBE8':'0 4px 0 #C9BBE8'};opacity:${pl.dead?'.5':'1'}${burst?';animation:shake .35s ease-in-out infinite':''}">
+        <div style="position:relative;width:56px;height:56px;border-radius:50%;border:4px solid ${pl.holder?'#FF5D73':'#3B2D5E'};background:${pl.holder?'#FFF1C9':'#fff'};display:flex;align-items:center;justify-content:center;box-shadow:${pl.holder?'0 0 0 5px rgba(255,93,115,.35),0 4px 0 #C9BBE8':'0 4px 0 #C9BBE8'};opacity:${pl.dead?'.5':'1'}">
           ${U().ava({avatar:pl.avatar,emoji:pl.emoji,hat:pl.hat,hatPos:pl.hatPos,bg:pl.bg},44)}
-          ${burst?'<div class="pop" style="position:absolute;font-size:46px">💥</div>':(pl.holder&&!boom?'<div style="position:absolute;bottom:-9px;right:-9px;font-size:23px;animation:floaty 1.2s ease-in-out infinite">💣</div>':'')}
-          ${pl.dead&&!burst?'<div style="position:absolute;inset:0;border-radius:50%;background:rgba(59,45,94,.55);display:flex;align-items:center;justify-content:center;font-size:23px">💀</div>':''}
+          ${pl.holder&&!boom?'<div style="position:absolute;bottom:-9px;right:-9px;font-size:23px;animation:floaty 1.2s ease-in-out infinite">💣</div>':''}
+          ${pl.dead?'<div style="position:absolute;inset:0;border-radius:50%;background:rgba(59,45,94,.55);display:flex;align-items:center;justify-content:center;font-size:23px">💀</div>':''}
         </div>
         <div style="font-size:13px;font-weight:800;color:${pl.holder?'#FF5D73':'#3B2D5E'};max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
         <div style="font-size:11px;letter-spacing:1px">${pl.hearts}</div>${live}</div>`; }).join('');
     return `<div style="position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center;margin:48px 0 54px">
       <div id="tt-bomb" style="position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,${boom?'#7A2A3A,#3A1622':'#5A4A7A,#2A2440'});border:4px solid #3B2D5E;box-shadow:0 8px 0 #1F1638,inset 0 -6px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px${boom?';animation:shake .3s ease-in-out infinite':''}">
         <div id="tt-spark" style="position:absolute;top:-16%;right:6%;font-size:28px;animation:sparkle .5s ease-in-out infinite">${tt.running&&!boom?'🔥':''}</div>
-        ${boom?'<div style="font-size:38px">💥</div>':`<div style="font-size:12px;font-weight:800;color:#FFC93C;letter-spacing:1px">UN MOT EN</div><div style="font-size:clamp(28px,9vw,46px);font-weight:800;color:#fff;line-height:.9">${esc(tt.syllable)}</div>`}
+        ${boom?'<div class="pop" style="font-size:56px;line-height:1">💥</div>':`<div style="font-size:12px;font-weight:800;color:#FFC93C;letter-spacing:1px">UN MOT EN</div><div style="font-size:clamp(28px,9vw,46px);font-weight:800;color:#fff;line-height:.9">${esc(tt.syllable)}</div>`}
       </div>${ring}
     </div>`; }
   function ttShake(){ const s=app().querySelector('.stage'); if(s){ s.style.animation='none'; void s.offsetWidth; s.style.animation='shake .35s'; } }   // « c'est pas bon » : tout se secoue
   function rTtPlay(v){
     const tt=v.tt;
     const fbCol=tt.feedbackKind==='good'?'#1E8B81':(tt.feedbackKind==='bad'?'#FF5D73':'#A99CC9');
-    const cons = (tt.iAmHolder && tt.running) ? `<div class="card" style="background:#fff;border:3px solid #3B2D5E;border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 6px 0 #C9BBE8">
-        <div style="font-size:17px;font-weight:800">À toi ! <span style="color:#7A6BA8;font-weight:700;font-size:14px">un mot avec « ${esc(tt.syllable)} »</span></div>
-        <div class="row gap8"><input id="tt-input" class="field" placeholder="tape un mot…" maxlength="24" style="flex:1;text-transform:uppercase;font-size:20px;font-weight:800"><button class="btn btn--teal" id="tt-send" style="width:62px">✓</button></div>
-        <div id="tt-fb" style="min-height:22px;font-size:15px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div>
+    const KST='flex:1 1 0;min-width:0;height:44px;border:2px solid #3B2D5E;border-radius:9px;background:#fff;color:#3B2D5E;font-weight:800;font-size:17px;font-family:inherit;box-shadow:0 3px 0 #C9BBE8;cursor:pointer;padding:0';
+    const kRow=(ls)=>`<div style="display:flex;gap:4px;justify-content:center">${ls.map(k=>`<button class="ttk" data-k="${k}" style="${KST}">${k}</button>`).join('')}</div>`;
+    const cons = (tt.iAmHolder && tt.running) ? `<div id="tt-typecard" class="card" style="background:#fff;border:3px solid #3B2D5E;border-radius:20px;padding:13px;display:flex;flex-direction:column;gap:9px;box-shadow:0 6px 0 #C9BBE8">
+        <div style="text-align:center;font-size:16px;font-weight:800">🎯 À toi&nbsp;! un mot avec « <span style="color:#FF5D73">${esc(tt.syllable)}</span> »</div>
+        <div id="tt-typed" style="min-height:42px;border:3px solid #3B2D5E;border-radius:14px;background:#FFF8EC;display:flex;align-items:center;justify-content:center;font-size:25px;font-weight:800;letter-spacing:2px;color:#3B2D5E;padding:4px 10px;word-break:break-all"><span style="opacity:.4">…</span></div>
+        <div id="tt-fb" style="min-height:18px;text-align:center;font-size:14px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${kRow(['A','Z','E','R','T','Y','U','I','O','P'])}
+          ${kRow(['Q','S','D','F','G','H','J','K','L','M'])}
+          <div style="display:flex;gap:4px;justify-content:center"><button id="tt-bksp" style="flex:1.6 1 0;min-width:0;height:44px;border:2px solid #3B2D5E;border-radius:9px;background:#FFE3E8;color:#3B2D5E;font-weight:800;font-size:18px;font-family:inherit;box-shadow:0 3px 0 #E0A9B4;cursor:pointer">⌫</button>${['W','X','C','V','B','N'].map(k=>`<button class="ttk" data-k="${k}" style="${KST}">${k}</button>`).join('')}<button id="tt-ok" style="flex:1.6 1 0;min-width:0;height:44px;border:2px solid #3B2D5E;border-radius:9px;background:#2EC4B6;color:#fff;font-weight:800;font-size:18px;font-family:inherit;box-shadow:0 3px 0 #1E8B81;cursor:pointer">✓</button></div>
+        </div>
       </div>`
       : (tt.running ? `<div class="center" style="font-size:16px;font-weight:800;color:#7A6BA8">💣 c'est au tour de <b style="color:#FF5D73">${esc(tt.holderName)}</b> — un mot avec « ${esc(tt.syllable)} »</div>`
         : (v.iAmHost ? `<button class="btn btn--coral lg block" id="tt-light">🔥 Allumer la mèche</button>` : `<div class="center muted" style="font-weight:700">⏳ en attente que l'hôte allume la mèche…</div>`));
@@ -1328,22 +1344,32 @@ SJ.room = (function(){
       ${cons}
     </div></section>`);
     ttLiveLen=0;
+    if(ttKeyHandler){ window.removeEventListener('keydown', ttKeyHandler); ttKeyHandler=null; }   // retire l'ancien écouteur clavier
     if(!tt.running && v.iAmHost){ const l=$('#tt-light'); if(l) l.onclick=()=>{ SJ.audio.click(); act('ttlight'); }; }
-    if(tt.iAmHolder && tt.running){ const inp=$('#tt-input'), snd=$('#tt-send'), fb=$('#tt-fb');
+    if(tt.iAmHolder && tt.running){
+      let typed=''; const disp=$('#tt-typed'), fb=$('#tt-fb');
+      const draw=()=>{ if(disp) disp.innerHTML = typed?esc(typed):'<span style="opacity:.4">…</span>'; };
       const bad=(msg)=>{ if(fb){ fb.textContent=msg; fb.style.color='#FF5D73'; } ttShake(); SJ.audio.nope&&SJ.audio.nope(); };
-      const go=()=>{ const w=((inp.value||'').trim()).toUpperCase().replace(/[^A-ZÀ-Ü]/g,''); const syl=(tt.syllable||'').toUpperCase();
-        if(w.length<2){ bad('trop court !'); return; }
-        if(w.indexOf(syl)<0){ bad('il faut « '+tt.syllable+' » dedans !'); return; }
-        SJ.audio.validate&&SJ.audio.validate(); act('ttword',{word:w}); };
-      if(snd) snd.onclick=go;
-      if(inp){ inp.onkeydown=(e)=>{ if(e.key==='Enter') go(); };
-        inp.oninput=()=>{ SJ.audio.key&&SJ.audio.key(); act('ttinput',{text:(inp.value||'')}); };
-        inp.focus(); }
-      if(tt.feedbackKind==='bad'){ ttShake(); SJ.audio.nope&&SJ.audio.nope(); }   // mot refusé par l'hôte (déjà dit)
+      const append=(c)=>{ if(typed.length>=24) return; typed+=c; SJ.audio.key&&SJ.audio.key(); draw(); act('ttinput',{text:typed}); };
+      const bksp=()=>{ if(!typed) return; typed=typed.slice(0,-1); draw(); act('ttinput',{text:typed}); };
+      const go=()=>{ const wN=ttNorm(typed), sN=ttNorm(tt.syllable||'');
+        if(wN.length<2){ bad('trop court !'); return; }
+        if(wN.indexOf(sN)<0){ bad('il faut « '+tt.syllable+' » dedans !'); return; }
+        SJ.audio.validate&&SJ.audio.validate(); act('ttword',{word:typed}); };
+      app().querySelectorAll('.ttk').forEach(b=> b.onclick=()=>append(b.dataset.k));
+      const bk=$('#tt-bksp'); if(bk) bk.onclick=bksp;
+      const ok=$('#tt-ok'); if(ok) ok.onclick=go;
+      ttKeyHandler=(e)=>{ if(!document.getElementById('tt-typed')) return; if(e.ctrlKey||e.metaKey||e.altKey) return;
+        if(e.key==='Enter'){ e.preventDefault(); go(); }
+        else if(e.key==='Backspace'){ e.preventDefault(); bksp(); }
+        else if(e.key && e.key.length===1 && /[a-zàâäéèêëïîôöùûüÿçœæ]/i.test(e.key)){ append(e.key.toUpperCase()); } };
+      window.addEventListener('keydown', ttKeyHandler);
+      const tc=$('#tt-typecard'); if(tc) tc.scrollIntoView({block:'center'});
+      if(tt.feedbackKind==='bad'){ ttShake(); SJ.audio.nope&&SJ.audio.nope(); }   // mot refusé par l'hôte
     }
   }
   function rTtBoom(v){ const b=v.tt.boom||{};
-    // tout le monde voit l'explosion DANS le cercle (sur le jeton du porteur). L'écran rouge n'apparaît QUE pour le joueur éliminé.
+    // la bombe explose AU CENTRE (elle ne va pas vers le joueur) + secousse d'écran pour tous. L'écran rouge n'apparaît QUE pour le joueur éliminé.
     const overlay = (b.you && b.out)
       ? `<div style="position:fixed;inset:0;background:linear-gradient(170deg,rgba(255,93,115,.97),rgba(194,58,80,.97));z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;animation:cfgFade .18s ease"><div style="text-align:center;color:#fff;display:flex;flex-direction:column;gap:14px;align-items:center"><div style="font-size:88px;animation:shake .4s ease-in-out infinite">💥</div><div style="font-size:46px;font-weight:800;text-shadow:0 4px 0 rgba(0,0,0,.28)">ÉLIMINÉ·E</div><div style="background:rgba(255,255,255,.96);border:3px solid #3B2D5E;border-radius:18px;padding:12px 20px;color:#3B2D5E;font-size:18px;font-weight:800">💀 Tu n'as plus de vies</div></div></div>`
       : '';
@@ -1352,7 +1378,7 @@ SJ.room = (function(){
       ${ttCircleHTML(v.tt, true)}
       <div class="center" style="font-size:17px;font-weight:800;color:#C23A50">💥 ${esc(b.name||'?')} ${b.out?'est éliminé·e 💀':'explose — perd une vie'}</div>
     </div></section>${overlay}`);
-    SJ.audio.boom&&SJ.audio.boom();
+    SJ.audio.boom&&SJ.audio.boom(); ttShake();   // secousse d'écran : la bombe a pété au centre
     if(b.you && b.out) mAfter(420, ()=>SJ.audio.lose&&SJ.audio.lose());
   }
   function rTtOver(v){ const o=v.tt.over||{};
