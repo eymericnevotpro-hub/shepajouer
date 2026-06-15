@@ -34,7 +34,7 @@ SJ.room = (function(){
   let micStream=null, pbAudioTimer=null, pbRaf=0, pbCountTimer=null;
   let piCtx=null, piCanvas=null, piIsDrawer=false, piColor='#3B2D5E', piWidth=4, piLast=null, piBuf=[], piRaf=0, piUp=null;
   let ttFuse=null;   // timer de la mèche (host) : volontairement HORS de mClear (survit aux re-render de passage)
-  let ttKeyHandler=null;   // écouteur clavier physique du porteur (clavier intégré) — retiré/réattaché à chaque rendu
+  let ttVVHandler=null;   // écouteur visualViewport (vue porteur) : cale le jeu sur la zone visible quand le clavier natif s'ouvre
   let soloTimer=null;   // timer Solo ! (IA des bots / anti-AFK), géré à la main (hors mClear)
   let soloMySeat=-1;    // siège du joueur local (pour viser l'animation de pioche)
   const nowMs=()=> (window.performance&&performance.now)?performance.now():Date.now();
@@ -457,7 +457,7 @@ SJ.room = (function(){
               <div class="col" style="line-height:1.05"><div style="font-size:23px;font-weight:800">Shepa Jouer</div><div style="font-size:13px;font-weight:700;color:#9B5DE5">Salon de ${esc(v.hostName)}</div></div></div>
             <div class="row gap6 wrap" style="align-items:center;justify-content:flex-end">
               <button class="pill paper" id="copy" style="cursor:pointer;font-size:14px;font-weight:800;letter-spacing:2px">📨 ${esc(v.code||'')} ⎘</button>
-              <span class="pill paper" style="font-size:14px;font-weight:800">🪙 ${SJ.store.get('coins')}</span>
+              <button class="pill lilac" id="salon-shop" style="cursor:pointer;font-size:14px;font-weight:800">🛍️ ${SJ.store.get('coins')} 🪙</button>
               <button id="editme" style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:3px solid #3B2D5E;border-radius:999px;padding:3px 11px 3px 4px;cursor:pointer;box-shadow:0 4px 0 #C9BBE8;font-family:inherit;font-weight:700;font-size:14px;color:#3B2D5E">${U().ava(avatarP,28)}<span style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(SJ.store.get('pseudo')||'moi')}</span> ✏️</button>
               ${host?`<button class="pill lilac cfg-mobile" id="cfg" style="cursor:pointer;font-size:14px;font-weight:800">⚙️ Réglages de partie</button>`:''}
               <button class="btn btn--ghost sm" id="back">← quitter</button>
@@ -489,6 +489,7 @@ SJ.room = (function(){
     $('#copy').onclick=()=>{ const link=location.origin+location.pathname+'?code='+(v.code||''); if(navigator.clipboard) navigator.clipboard.writeText(link); U().toast('Lien copié ! 🔗'); SJ.audio.click(); };
     $('#back').onclick=()=>{ SJ.audio.click(); quitToHome(); };
     const em=$('#editme'); if(em) em.onclick=()=>{ SJ.audio.click(); SJ.screens.avatar({then: reenterSalon}); };
+    const sh=$('#salon-shop'); if(sh) sh.onclick=()=>{ SJ.audio.click(); SJ.screens.shop({then: reenterSalon}); };
     if(host){ const wrap=$('#cfgwrap'); const closeCfg=()=>{ if(wrap) wrap.classList.remove('show'); };
       const cf=$('#cfg'); if(cf) cf.onclick=()=>{ SJ.audio.click(); if(wrap) wrap.classList.add('show'); };
       const cc=$('#cfgclose'); if(cc) cc.onclick=()=>{ SJ.audio.click(); closeCfg(); };
@@ -1299,8 +1300,8 @@ SJ.room = (function(){
     curKey=null; hostRefresh();
   }
   function ttRingPos(i,n){ const ang=(-90+i*(360/n))*Math.PI/180, r=38; return { left:(50+r*Math.cos(ang))+'%', top:(50+r*Math.sin(ang))+'%' }; }
-  // cercle partagé par le jeu et l'explosion : bombe au centre + jetons autour. boom=true → l'explosion s'anime sur le jeton du porteur (tout le monde la voit)
-  function ttCircleHTML(tt, boom){ const n=tt.ring.length;
+  // cercle partagé : bombe au centre + jetons autour. boom=true → 💥 au centre. fit=true → le cercle se réduit pour tenir dans l'espace dispo (vue porteur, clavier ouvert)
+  function ttCircleHTML(tt, boom, fit){ const n=tt.ring.length;
     const ring=tt.ring.map((pl,i)=>{ const pos=ttRingPos(i,n); const up=parseFloat(pos.top)<46;
       const live=(!boom&&pl.holder&&!pl.you&&tt.running)
         ? `<div id="tt-live" style="position:absolute;left:50%;transform:translateX(-50%);${up?'bottom:100%;margin-bottom:7px':'top:100%;margin-top:7px'};z-index:7;background:#3B2D5E;color:#fff;border:2px solid #fff;border-radius:12px;padding:4px 11px;font-size:16px;font-weight:800;letter-spacing:1px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 0 rgba(0,0,0,.3)"><span style="opacity:.45;font-weight:700">…</span></div>` : '';
@@ -1312,30 +1313,45 @@ SJ.room = (function(){
         </div>
         <div style="font-size:13px;font-weight:800;color:${pl.holder?'#FF5D73':'#3B2D5E'};max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
         <div style="font-size:11px;letter-spacing:1px">${pl.hearts}</div>${live}</div>`; }).join('');
-    return `<div style="position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center;margin:48px 0 54px">
+    return `<div style="${fit?'position:relative;height:100%;aspect-ratio:1;max-width:100%;margin:0 auto':'position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center;margin:48px 0 54px'}">
       <div id="tt-bomb" style="position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,${boom?'#7A2A3A,#3A1622':'#5A4A7A,#2A2440'});border:4px solid #3B2D5E;box-shadow:0 8px 0 #1F1638,inset 0 -6px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
         <div id="tt-spark" style="position:absolute;top:-16%;right:6%;font-size:28px;animation:sparkle .5s ease-in-out infinite">${tt.running&&!boom?'🔥':''}</div>
         ${boom?'<div class="pop" style="font-size:56px;line-height:1">💥</div>':`<div style="font-size:12px;font-weight:800;color:#FFC93C;letter-spacing:1px">UN MOT EN</div><div style="font-size:clamp(28px,9vw,46px);font-weight:800;color:#fff;line-height:.9">${esc(tt.syllable)}</div>`}
       </div>${ring}
     </div>`; }
   function ttShake(){ const s=app().querySelector('.stage'); if(s){ s.style.animation='none'; void s.offsetWidth; s.style.animation='shake .35s'; } }   // « c'est pas bon » : tout se secoue
+  function ttClearVV(){ if(ttVVHandler&&window.visualViewport){ window.visualViewport.removeEventListener('resize',ttVVHandler); window.visualViewport.removeEventListener('scroll',ttVVHandler); } ttVVHandler=null; }
   function rTtPlay(v){
     const tt=v.tt;
     const fbCol=tt.feedbackKind==='good'?'#1E8B81':(tt.feedbackKind==='bad'?'#FF5D73':'#A99CC9');
-    const KST='flex:1 1 0;min-width:0;height:44px;border:2px solid #3B2D5E;border-radius:9px;background:#fff;color:#3B2D5E;font-weight:800;font-size:17px;font-family:inherit;box-shadow:0 3px 0 #C9BBE8;cursor:pointer;padding:0';
-    const kRow=(ls)=>`<div style="display:flex;gap:4px;justify-content:center">${ls.map(k=>`<button class="ttk" data-k="${k}" style="${KST}">${k}</button>`).join('')}</div>`;
-    const cons = (tt.iAmHolder && tt.running) ? `<div id="tt-typecard" class="card" style="background:#fff;border:3px solid #3B2D5E;border-radius:20px;padding:13px;display:flex;flex-direction:column;gap:9px;box-shadow:0 6px 0 #C9BBE8">
-        <div style="text-align:center;font-size:16px;font-weight:800">🎯 À toi&nbsp;! un mot avec « <span style="color:#FF5D73">${esc(tt.syllable)}</span> »</div>
-        <div id="tt-typed" style="min-height:42px;border:3px solid #3B2D5E;border-radius:14px;background:#FFF8EC;display:flex;align-items:center;justify-content:center;font-size:25px;font-weight:800;letter-spacing:2px;color:#3B2D5E;padding:4px 10px;word-break:break-all"><span style="opacity:.4">…</span></div>
-        <div id="tt-fb" style="min-height:18px;text-align:center;font-size:14px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div>
-        <div style="display:flex;flex-direction:column;gap:5px">
-          ${kRow(['A','Z','E','R','T','Y','U','I','O','P'])}
-          ${kRow(['Q','S','D','F','G','H','J','K','L','M'])}
-          <div style="display:flex;gap:4px;justify-content:center"><button id="tt-bksp" style="flex:1.6 1 0;min-width:0;height:44px;border:2px solid #3B2D5E;border-radius:9px;background:#FFE3E8;color:#3B2D5E;font-weight:800;font-size:18px;font-family:inherit;box-shadow:0 3px 0 #E0A9B4;cursor:pointer">⌫</button>${['W','X','C','V','B','N'].map(k=>`<button class="ttk" data-k="${k}" style="${KST}">${k}</button>`).join('')}<button id="tt-ok" style="flex:1.6 1 0;min-width:0;height:44px;border:2px solid #3B2D5E;border-radius:9px;background:#2EC4B6;color:#fff;font-weight:800;font-size:18px;font-family:inherit;box-shadow:0 3px 0 #1E8B81;cursor:pointer">✓</button></div>
-        </div>
-      </div>`
-      : (tt.running ? `<div class="center" style="font-size:16px;font-weight:800;color:#7A6BA8">💣 c'est au tour de <b style="color:#FF5D73">${esc(tt.holderName)}</b> — un mot avec « ${esc(tt.syllable)} »</div>`
-        : (v.iAmHost ? `<button class="btn btn--coral lg block" id="tt-light">🔥 Allumer la mèche</button>` : `<div class="center muted" style="font-weight:700">⏳ en attente que l'hôte allume la mèche…</div>`));
+    ttClearVV();
+    if(tt.iAmHolder && tt.running){
+      // VUE PORTEUR : plein écran qui se cale sur la zone VISIBLE (au-dessus du clavier NATIF du téléphone) → le jeu reste visible derrière
+      mMount(`<div id="tt-holder" style="position:fixed;left:0;top:0;width:100%;height:100%;z-index:40;background:#FFF3DF;display:flex;flex-direction:column;padding:8px 12px 10px;gap:7px;box-sizing:border-box">
+        <div class="row between" style="flex-shrink:0"><span class="pill" style="background:#3B2D5E;color:#fff;font-weight:800;font-size:13px">Manche ${tt.round}</span><span style="font-size:13px;font-weight:800;color:#C23A50">🔥 à toi — ça peut péter !</span></div>
+        <div style="flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center">${ttCircleHTML(tt,false,true)}</div>
+        <div id="tt-fb" style="flex-shrink:0;text-align:center;min-height:16px;font-size:13px;font-weight:800;color:${fbCol}">${esc(tt.feedback||'')}</div>
+        <div class="row gap8" style="flex-shrink:0"><input id="tt-input" class="field" placeholder="mot avec « ${esc(tt.syllable)} »…" maxlength="24" autocomplete="off" autocorrect="off" autocapitalize="characters" enterkeyhint="send" style="flex:1;text-transform:uppercase;font-size:18px;font-weight:800"><button class="btn btn--teal" id="tt-send" style="width:58px;flex-shrink:0">✓</button></div>
+      </div>`);
+      const inp=$('#tt-input'), snd=$('#tt-send'), fb=$('#tt-fb');
+      const bad=(msg)=>{ if(fb){ fb.textContent=msg; fb.style.color='#FF5D73'; } ttShake(); SJ.audio.nope&&SJ.audio.nope(); };
+      const go=()=>{ const raw=(inp.value||'').trim(); const wN=ttNorm(raw), sN=ttNorm(tt.syllable||'');
+        if(wN.length<2){ bad('trop court !'); return; }
+        if(wN.indexOf(sN)<0){ bad('il faut « '+tt.syllable+' » dedans !'); return; }
+        SJ.audio.validate&&SJ.audio.validate(); act('ttword',{word:raw}); };
+      if(snd) snd.onclick=go;
+      if(inp){ inp.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } };
+        inp.oninput=()=>{ SJ.audio.key&&SJ.audio.key(); act('ttinput',{text:(inp.value||'')}); };
+        setTimeout(()=>{ try{ inp.focus(); }catch(_){} }, 60); }
+      // cale la vue sur la zone visible quand le clavier s'ouvre/ferme
+      if(window.visualViewport){ ttVVHandler=()=>{ const h=document.getElementById('tt-holder'); if(!h) return; const vv=window.visualViewport; h.style.height=vv.height+'px'; h.style.transform='translateY('+vv.offsetTop+'px)'; };
+        window.visualViewport.addEventListener('resize',ttVVHandler); window.visualViewport.addEventListener('scroll',ttVVHandler); ttVVHandler(); }
+      if(tt.feedbackKind==='bad'){ ttShake(); SJ.audio.nope&&SJ.audio.nope(); }
+      return;
+    }
+    // VUE SPECTATEUR / AVANT MÈCHE : stage normal
+    const cons = tt.running ? `<div class="center" style="font-size:16px;font-weight:800;color:#7A6BA8">💣 c'est au tour de <b style="color:#FF5D73">${esc(tt.holderName)}</b> — un mot avec « ${esc(tt.syllable)} »</div>`
+      : (v.iAmHost ? `<button class="btn btn--coral lg block" id="tt-light">🔥 Allumer la mèche</button>` : `<div class="center muted" style="font-weight:700">⏳ en attente que l'hôte allume la mèche…</div>`);
     mMount(`<section class="screen"><div class="stage" style="max-width:560px;gap:14px">
       <div class="row between"><span class="pill" style="background:#3B2D5E;color:#fff;font-weight:800">Manche ${tt.round}</span><span style="font-size:15px;font-weight:700;color:#7A6BA8">${tt.aliveCount} en vie</span></div>
       ${ttCircleHTML(tt,false)}
@@ -1343,31 +1359,9 @@ SJ.room = (function(){
       ${cons}
     </div></section>`);
     ttLiveLen=0;
-    if(ttKeyHandler){ window.removeEventListener('keydown', ttKeyHandler); ttKeyHandler=null; }   // retire l'ancien écouteur clavier
     if(!tt.running && v.iAmHost){ const l=$('#tt-light'); if(l) l.onclick=()=>{ SJ.audio.click(); act('ttlight'); }; }
-    if(tt.iAmHolder && tt.running){
-      let typed=''; const disp=$('#tt-typed'), fb=$('#tt-fb');
-      const draw=()=>{ if(disp) disp.innerHTML = typed?esc(typed):'<span style="opacity:.4">…</span>'; };
-      const bad=(msg)=>{ if(fb){ fb.textContent=msg; fb.style.color='#FF5D73'; } ttShake(); SJ.audio.nope&&SJ.audio.nope(); };
-      const append=(c)=>{ if(typed.length>=24) return; typed+=c; SJ.audio.key&&SJ.audio.key(); draw(); act('ttinput',{text:typed}); };
-      const bksp=()=>{ if(!typed) return; typed=typed.slice(0,-1); draw(); act('ttinput',{text:typed}); };
-      const go=()=>{ const wN=ttNorm(typed), sN=ttNorm(tt.syllable||'');
-        if(wN.length<2){ bad('trop court !'); return; }
-        if(wN.indexOf(sN)<0){ bad('il faut « '+tt.syllable+' » dedans !'); return; }
-        SJ.audio.validate&&SJ.audio.validate(); act('ttword',{word:typed}); };
-      app().querySelectorAll('.ttk').forEach(b=> b.onclick=()=>append(b.dataset.k));
-      const bk=$('#tt-bksp'); if(bk) bk.onclick=bksp;
-      const ok=$('#tt-ok'); if(ok) ok.onclick=go;
-      ttKeyHandler=(e)=>{ if(!document.getElementById('tt-typed')) return; if(e.ctrlKey||e.metaKey||e.altKey) return;
-        if(e.key==='Enter'){ e.preventDefault(); go(); }
-        else if(e.key==='Backspace'){ e.preventDefault(); bksp(); }
-        else if(e.key && e.key.length===1 && /[a-zàâäéèêëïîôöùûüÿçœæ]/i.test(e.key)){ append(e.key.toUpperCase()); } };
-      window.addEventListener('keydown', ttKeyHandler);
-      const tc=$('#tt-typecard'); if(tc) tc.scrollIntoView({block:'center'});
-      if(tt.feedbackKind==='bad'){ ttShake(); SJ.audio.nope&&SJ.audio.nope(); }   // mot refusé par l'hôte
-    }
   }
-  function rTtBoom(v){ const b=v.tt.boom||{};
+  function rTtBoom(v){ const b=v.tt.boom||{}; ttClearVV();
     // la bombe explose AU CENTRE (immobile, pas d'aller-retour). Le joueur QUI EXPLOSE voit l'écran rouge (éliminé OU « perd une vie ») ; les autres voient l'explosion au centre.
     const overlay = b.you
       ? `<div style="position:fixed;inset:0;background:linear-gradient(170deg,rgba(255,93,115,.97),rgba(194,58,80,.97));z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;animation:cfgFade .18s ease"><div style="text-align:center;color:#fff;display:flex;flex-direction:column;gap:14px;align-items:center"><div class="pop" style="font-size:88px;line-height:1">💥</div><div style="font-size:44px;font-weight:800;text-shadow:0 4px 0 rgba(0,0,0,.28)">${b.out?'ÉLIMINÉ·E':'BOUM !'}</div><div style="background:rgba(255,255,255,.96);border:3px solid #3B2D5E;border-radius:18px;padding:12px 20px;color:#3B2D5E;font-size:18px;font-weight:800">${b.out?'💀 Tu n\'as plus de vies':'Tu perds une vie&nbsp;!'}<div style="font-size:18px;margin-top:5px;letter-spacing:1px">${b.hearts||''}</div></div></div></div>`

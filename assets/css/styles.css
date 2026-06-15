@@ -181,6 +181,8 @@ h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.5px}
   align-items:center; gap:5px; background:#fff; border:var(--bd); border-radius:999px; padding:6px 14px;
   font-family:'Baloo 2',system-ui,sans-serif; font-weight:800; font-size:14px; color:var(--ink); cursor:pointer; box-shadow:0 4px 0 var(--ink-ghost); }
 #gomenu:active{ transform:translateY(2px); box-shadow:0 2px 0 var(--ink-ghost); }
+/* sur grand écran (PC), le jeu est centré → on rapproche le bouton Menu du jeu plutôt que dans le coin lointain */
+@media (min-width:720px){ #gomenu{ left:max(14px, calc(50% - 290px)); top:18px; } }
 body.in-game .screen{ padding-top:60px; }   /* place pour le bouton menu en haut à gauche */
 
 /* ---------- confetti ---------- */

@@ -103,7 +103,7 @@ SJ.screens = (function(){
     mount(`
       <section class="screen">
         <div class="stage" style="max-width:620px">
-          <div class="row"><span class="badge" style="background:#FFC93C;color:#3B2D5E;box-shadow:0 3px 0 #D9A416;transform:rotate(2deg)">02</span><h2 style="font-size:24px">Crée ta tête</h2></div>
+          <div class="row between" style="align-items:center"><div class="row gap8" style="align-items:center"><span class="badge" style="background:#FFC93C;color:#3B2D5E;box-shadow:0 3px 0 #D9A416;transform:rotate(2deg)">02</span><h2 style="font-size:24px">Crée ta tête</h2></div><button class="pill lilac" id="ava-shop" style="cursor:pointer;font-weight:800;font-size:14px">🛍️ boutique</button></div>
           <div class="card sh-yellow" style="display:flex;gap:22px;flex-wrap:wrap;justify-content:center">
             <div class="col" style="gap:12px;align-items:center;flex:1;min-width:270px">
               <div id="pad" style="position:relative;line-height:0"></div>
@@ -202,6 +202,7 @@ SJ.screens = (function(){
       else if(!S.get('avatar')){ toast('Dessine ou choisis un modèle 🎨'); return; }
       SJ.audio.validate(); confetti(30); done(); };
     $('#back').onclick=()=>{ SJ.audio.click(); done(); };
+    $('#ava-shop').onclick=()=>{ SJ.audio.click(); shop({then: ()=>avatar(opts)}); };   // boutique → retour à l'éditeur d'avatar
   }
 
   /* ---------- étape profil avant de rejoindre (invité) ---------- */
@@ -456,7 +457,8 @@ SJ.screens = (function(){
   /* ======================================================
      08 — BOUTIQUE
      ====================================================== */
-  function shop(){
+  function shop(opts){
+    const back = (opts && typeof opts.then==='function') ? opts.then : home;   // retour paramétrable (accueil, salon, ou éditeur d'avatar)
     let cat='Chapeaux';
     mount(`
       <section class="screen">
@@ -499,7 +501,7 @@ SJ.screens = (function(){
       SJ.audio.pop(); $('#scoins').textContent=S.get('coins'); renderGrid();
     }
     renderCats(); renderGrid();
-    $('#back').onclick=()=>{ SJ.audio.click(); refreshCoins(); home(); };
+    $('#back').onclick=()=>{ SJ.audio.click(); refreshCoins(); back(); };
   }
 
   /* ---------- règles ---------- */
