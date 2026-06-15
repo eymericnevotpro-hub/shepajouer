@@ -83,6 +83,7 @@ SJ.room = (function(){
     } else if(m.t==='solopass'){ if(M&&M.gameType==='solo') soloPass(id);
     } else if(m.t==='solocolor'){ if(M&&M.gameType==='solo') soloChooseColor(id, m.c);
     } else if(m.t==='solosolo'){ if(M&&M.gameType==='solo') soloCallSolo(id);
+    } else if(m.t==='solocontre'){ if(M&&M.gameType==='solo') soloContre(id);
     } else if(m.t==='ttword'){ if(M&&M.gameType==='tictacmot') ttSubmit(id, m.word);
     } else if(m.t==='ttinput'){ if(M&&M.gameType==='tictacmot'&&phase==='ttplay'&&id===M.holder){ players.forEach(p=>{ if(!p.isHost&&!p.isBot&&p.id!==id) net.sendTo(p.id,{t:'ttinput',text:m.text}); }); patchTtLive(m.text); }
     } else if(m.t==='tosalon'){ toSalon();
@@ -209,7 +210,7 @@ SJ.room = (function(){
           roster:players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,you:(p.id===forId),alive:!!M.alive[p.id]})) };
         if(phase==='ucclue'){ v.uc.myClue=M.clues[forId]||null; v.uc.progress={done:alive.filter(p=>M.clues[p.id]!=null).length,total:alive.length}; }
         else if(phase==='ucvote'){ v.uc.clues=alive.map(p=>({id:p.id,name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,you:(p.id===forId),clue:M.clues[p.id]||'…'})); v.uc.myVote=M.votes[forId]||null; v.uc.progress={done:alive.filter(p=>M.votes[p.id]!=null).length,total:alive.length}; }
-        else if(phase==='ucreveal'){ v.uc.elim=M.lastElim?{name:M.lastElim.name,emoji:M.lastElim.emoji,avatar:M.lastElim.avatar,hat:M.lastElim.hat,hatPos:M.lastElim.hatPos,bg:M.lastElim.bg,role:M.lastElim.role,word:M.lastElim.word}:null; v.uc.tally=M.tally; v.uc.winners=M.winners; }
+        else if(phase==='ucreveal'){ v.uc.elim=M.lastElim?{name:M.lastElim.name,emoji:M.lastElim.emoji,avatar:M.lastElim.avatar,hat:M.lastElim.hat,hatPos:M.lastElim.hatPos,bg:M.lastElim.bg,role:M.lastElim.role}:null; v.uc.tally=M.tally; v.uc.winners=M.winners; }
         else if(phase==='ucover'){ v.uc.winners=M.winners; v.uc.wCivil=M.wCivil; v.uc.wUnder=M.wUnder; v.uc.earned=(M.coins[forId]||0); v.uc.iWon=(M.roles[forId]===M.winners);
           v.uc.reveal=players.map(p=>({name:p.name,emoji:p.emoji,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,role:M.roles[p.id],word:M.words[p.id],you:(p.id===forId)})); }
         return v;
@@ -241,20 +242,25 @@ SJ.room = (function(){
       if(M.gameType==='solo'){
         v.gameType='solo'; const cm=SJ.SOLO.CMAP; const N=M.seats.length; const mySeat=M.seats.findIndex(s=>s.id===forId); const posSeat=mySeat<0?0:mySeat;
         const isTurn=i=>(M.turn===i && M.winnerSeat<0 && !M.needColor);
+        const uc=M.unoCalled||{};
         v.solo={ round:M.round, dir:M.dir, activeColorHex:cm[M.activeColor].bg, message:M.message,
+          turnName:(M.seats[M.turn]?M.seats[M.turn].name:''),
           top:{ bg:cm[M.top.color].bg, ink:cm[M.top.color].ink, corner:cm[M.top.color].corner, sym:SJ.SOLO.sym(M.top.val) },
           myTurn:(M.turn===mySeat && !M.needColor && M.winnerSeat<0),
           drawEnabled:(M.turn===mySeat && !M.needColor && M.winnerSeat<0 && M.drawn==null),
           canPass:(M.drawn!=null && M.turn===mySeat && !M.needColor && M.winnerSeat<0),
           needColor:(M.needColor && M.needColorSeat===mySeat),
+          mustCallUno:(mySeat>=0 && soloCount(mySeat)===1 && !uc[mySeat] && M.winnerSeat<0),   // tu es à 1 carte sans avoir crié
+          canContre:(M.winnerSeat<0 && M.seats.some((_,j)=> j!==mySeat && soloCount(j)===1 && !uc[j])),   // un adversaire à 1 carte a oublié de crier
           ring:M.seats.map((sp,i)=>{ const rel=((i-posSeat)%N+N)%N; const ang=(90+rel*(360/N))*Math.PI/180; const R=42; const cnt=soloCount(i);
             return { name:sp.name, emoji:sp.emoji, avatar:sp.avatar, hat:sp.hat, hatPos:sp.hatPos, bg:sp.bg||sp.color, bot:sp.bot,
-              left:(50+R*Math.cos(ang))+'%', top:(50+R*Math.sin(ang))+'%', isTurn:isTurn(i), count:cnt, solo:(cnt===1), you:(i===mySeat) }; }),
+              left:(50+R*Math.cos(ang))+'%', top:(50+R*Math.sin(ang))+'%', isTurn:isTurn(i), count:cnt, solo:(cnt===1), unoSafe:(cnt===1 && !!uc[i]), you:(i===mySeat) }; }),
           colorChoices:SJ.SOLO.COLORS.map(c=>({ c, hex:cm[c].bg, shadow:cm[c].sh, name:cm[c].name, ink:c==='Y'?'#3B2D5E':'#FFFFFF' })) };
         const myHand=(mySeat>=0?M.cards[mySeat]:null)||[];
         v.solo.hand=myHand.map((c,i)=>({ i, bg:cm[c.color].bg, ink:cm[c.color].ink, corner:cm[c.color].corner, sym:SJ.SOLO.sym(c.val),
           playable:(v.solo.myTurn && (c.color==='W'||c.color===M.activeColor||c.val===M.top.val)) }));
         v.solo.handCount=myHand.length;
+        v.solo.noPlayable=(v.solo.drawEnabled && !v.solo.hand.some(c=>c.playable));   // ton tour mais rien à jouer → il faut piocher
         if(M.winnerSeat>=0){ const ws=M.seats[M.winnerSeat]; v.solo.winner={ name:ws.name, emoji:ws.emoji, avatar:ws.avatar, hat:ws.hat, hatPos:ws.hatPos, bg:ws.bg||ws.color, you:(M.winnerSeat===mySeat), earned:(M.coins[forId]||0) }; }
         return v;
       }
@@ -289,6 +295,7 @@ SJ.room = (function(){
     return v;
   }
   function hostRefresh(){
+    if(M&&M.gameType==='solo'&&M.unoCalled){ for(let i=0;i<M.seats.length;i++){ if(soloCount(i)!==1) M.unoCalled[i]=false; } }   // le « cri UNO » ne vaut que tant qu'on est à 1 carte
     renderView(buildView(myId));
     players.forEach(p=>{ if(!p.isBot && !p.isHost) net.sendTo(p.id, {t:'view', view:buildView(p.id)}); });
   }
@@ -339,6 +346,7 @@ SJ.room = (function(){
       else if(type==='solopass') net.send({t:'solopass'});
       else if(type==='solocolor') net.send({t:'solocolor', c:payload.c});
       else if(type==='solosolo') net.send({t:'solosolo'});
+      else if(type==='solocontre') net.send({t:'solocontre'});
       return;
     }
     // host / solo
@@ -372,6 +380,7 @@ SJ.room = (function(){
     else if(type==='solopass'){ if(M&&M.gameType==='solo') soloPass(myId); }
     else if(type==='solocolor'){ if(M&&M.gameType==='solo') soloChooseColor(myId, payload.c); }
     else if(type==='solosolo'){ if(M&&M.gameType==='solo') soloCallSolo(myId); }
+    else if(type==='solocontre'){ if(M&&M.gameType==='solo') soloContre(myId); }
     else if(type==='soloagain'){ if(M&&M.gameType==='solo') soloAgain(); }
     else if(type==='next'){ mClear(); nextRound(); }
     else if(type==='restart'){ hostStart(M?M.gameType:'wavelength'); }
@@ -814,9 +823,9 @@ SJ.room = (function(){
   function pbListenMic(targetFrac, onReach){
     if(!micStream) return;
     try{ const ac=new (window.AudioContext||window.webkitAudioContext)(); const src=ac.createMediaStreamSource(micStream); const an=ac.createAnalyser(); an.fftSize=256; src.connect(an); const data=new Uint8Array(an.frequencyBinCount); let fired=false;
-      const target=Math.round((targetFrac||0.72)*100);
+      const target=Math.round((targetFrac||0.9)*100);
       (function loop(){ an.getByteFrequencyData(data); let sum=0; for(let i=0;i<data.length;i++) sum+=data[i]; const avg=sum/data.length;
-        const lvl=Math.min(100, avg*1.4);                      // moins sensible : il faut vraiment crier
+        const lvl=Math.min(100, avg*1.15);                     // bien moins sensible : il faut VRAIMENT hurler pour atteindre le repère
         const bar=document.getElementById('crielvl'); if(bar){ bar.style.width=lvl+'%'; bar.style.background = lvl>=target?'#FFC93C':'#2EC4B6'; }
         const face=document.getElementById('crieface'); if(face && !fired) face.textContent = lvl>=target?'🤩':(lvl>target*0.55?'😮':'😐');
         if(lvl>=target && !fired){ fired=true; onReach(); }
@@ -1024,7 +1033,8 @@ SJ.room = (function(){
     M.clues[id]=String(word||'').slice(0,24).trim()||'…';
     if(ucAliveList().every(p=>M.clues[p.id]!=null)) ucToVote(); else hostRefresh(); }
   function ucVoteSubmit(voterId, targetId){ if(phase!=='ucvote'||!M||!M.alive[voterId]||M.votes[voterId]!=null) return;
-    if(!M.alive[targetId]||targetId===voterId) return; M.votes[voterId]=targetId;
+    if(targetId==='__pass__'){ M.votes[voterId]='__pass__'; }   // s'abstenir
+    else { if(!M.alive[targetId]||targetId===voterId) return; M.votes[voterId]=targetId; }
     if(ucAliveList().every(p=>M.votes[p.id]!=null)) ucResolve(); else hostRefresh(); }
   function ucResolve(){
     if(phase!=='ucvote') return; mClear();
@@ -1076,27 +1086,30 @@ SJ.room = (function(){
       if(send) send.onclick=go; if(inp){ inp.onkeydown=(e)=>{ if(e.key==='Enter') go(); }; inp.focus(); }
     }
   }
-  function rUcVote(v){ const uc=v.uc, dead=!uc.iAmAlive, voted=uc.myVote;
+  function rUcVote(v){ const uc=v.uc, dead=!uc.iAmAlive, voted=uc.myVote, passed=voted==='__pass__';
     const cards=uc.clues.map(c=>`<button class="ucvote" data-id="${c.id}" ${(dead||c.you)?'disabled':''} style="display:flex;align-items:center;gap:10px;text-align:left;border:3px solid #3B2D5E;border-radius:16px;background:${voted===c.id?'#FFF1C9':'#fff'};padding:10px 12px;cursor:${(dead||c.you)?'default':'pointer'};box-shadow:0 5px 0 #C9BBE8;font-family:inherit;${(dead||c.you)?'opacity:.72':''}">
         ${U().ava({avatar:c.avatar,emoji:c.emoji,hat:c.hat,hatPos:c.hatPos,bg:c.bg},36)}
         <div class="grow" style="min-width:0"><div style="font-weight:800;font-size:15px;color:#3B2D5E">${c.you?'Toi':esc(c.name)}</div><div style="font-size:18px;font-weight:800;color:#D45D75">« ${esc(c.clue)} »</div></div>
         ${voted===c.id?'<span style="font-size:20px">🗳️</span>':''}</button>`).join('');
     mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:13px">
       <div class="row between"><span class="pill lilac" style="font-weight:800">Tour ${uc.round} · vote</span><span class="pill mint" style="font-weight:800">${uc.alive} en jeu</span></div>
+      ${dead?'':`<div class="center" style="font-size:14px;font-weight:700;color:#3B2D5E">Ton mot : <b style="color:#D45D75">${esc(uc.myWord)}</b></div>`}
       <div class="center" style="font-size:19px;font-weight:800">Qui est l'imposteur ? 🕵️</div>
       <div class="col" style="gap:9px">${cards}</div>
+      ${dead?'':`<button id="ucpass" ${voted?'disabled':''} style="border:3px solid #3B2D5E;border-radius:14px;padding:9px 14px;font-size:15px;font-weight:800;font-family:inherit;cursor:${voted?'default':'pointer'};box-shadow:0 5px 0 #C9BBE8;background:${passed?'#FFF1C9':'#fff'};color:#3B2D5E;${voted&&!passed?'opacity:.45':''}">${passed?'✅ Tu as passé ton tour':'🤐 Passer (ne voter pour personne)'}</button>`}
       <div class="center muted" style="font-weight:700">${dead?'👻 tu observes':`<span id="prog">${uc.progress.done}</span>/${uc.progress.total} ont voté`}</div>
     </div></section>`);
     if(!dead && !voted){ app().querySelectorAll('.ucvote').forEach(b=> b.onclick=()=>{ if(b.disabled) return; SJ.audio.validate();
       app().querySelectorAll('.ucvote').forEach(x=>{ x.style.outline='none'; if(x!==b) x.style.opacity='.55'; }); b.style.outline='4px solid #FFC93C'; b.style.outlineOffset='2px';
-      act('ucvote',{target:b.dataset.id}); }); }
+      act('ucvote',{target:b.dataset.id}); });
+      const pb=$('#ucpass'); if(pb) pb.onclick=()=>{ SJ.audio.click(); act('ucvote',{target:'__pass__'}); }; }
   }
   function rUcReveal(v){ const uc=v.uc, e=uc.elim, isUnder=e&&e.role==='under';
     const head = !e ? {t:"🤐 Égalité — personne n'est éliminé",c:'sh-purple'} : isUnder ? {t:`🎯 ${e.name} était un IMPOSTEUR !`,c:'sh-teal'} : {t:`😱 ${e.name} était un civil…`,c:'sh-coral'};
     mMount(`<section class="screen"><div class="stage" style="max-width:460px;gap:13px;align-items:stretch;text-align:center">
       <div class="card ${head.c}" style="display:flex;flex-direction:column;gap:10px;align-items:center">
         <div class="pop" style="font-size:21px;font-weight:800">${esc(head.t)}</div>
-        ${e?`${U().ava({avatar:e.avatar,emoji:e.emoji,hat:e.hat,hatPos:e.hatPos,bg:e.bg},58)}<div style="font-size:15px;font-weight:700">son mot était <b style="color:${isUnder?'#1E8B81':'#C23A50'}">${esc(e.word)}</b></div>`:'<div style="font-size:14px;font-weight:700;color:#7A6BA8">Les votes étaient partagés.</div>'}
+        ${e?`${U().ava({avatar:e.avatar,emoji:e.emoji,hat:e.hat,hatPos:e.hatPos,bg:e.bg},58)}<div style="font-size:14px;font-weight:700;color:#7A6BA8">🤐 les mots seront révélés à la fin</div>`:'<div style="font-size:14px;font-weight:700;color:#7A6BA8">Les votes étaient partagés.</div>'}
       </div>
       <div class="card" style="background:#fff;box-shadow:0 6px 0 #C9BBE8;display:flex;flex-direction:column;gap:5px"><div style="font-size:13px;font-weight:800;color:#7A6BA8">VOTES</div>${uc.tally.map(t=>`<div class="row between" style="font-size:14px;font-weight:700"><span>${esc(t.name)}</span><span>${'🗳️'.repeat(t.votes)} <b>${t.votes}</b></span></div>`).join('')}</div>
       ${uc.winners?`<div class="center" style="font-size:18px;font-weight:800;color:#9B5DE5">${uc.winners==='civil'?'🏅 Les civils ont gagné !':'🕵️ Les imposteurs gagnent !'}</div>`:''}
@@ -1125,7 +1138,7 @@ SJ.room = (function(){
   }
 
   /* ================= DESSINE & DEVINE (PICTIONARY) ================= */
-  const piNorm=s=>String(s||'').toLowerCase().trim().normalize('NFD').replace(/[^a-z0-9]/g,'');   // NFD + strip non-alphanum => accent-insensitif
+  const piNorm=s=>String(s||'').toLowerCase().replace(/œ/g,'oe').replace(/æ/g,'ae').trim().normalize('NFD').replace(/[^a-z0-9]/g,'');   // ligatures + NFD + strip non-alphanum => insensible casse/accents/œæ (cœur = coeur)
   function piDrawer(){ return players[M.drawerIdx%players.length]; }
   function piStart(){
     players.forEach(p=>p.score=0);
@@ -1375,11 +1388,11 @@ SJ.room = (function(){
   function soloStart(){
     players.forEach(p=>p.score=0);
     const seats=players.map(p=>({id:p.id,name:p.name,emoji:p.emoji,color:p.color,avatar:p.avatar,hat:p.hat,hatPos:p.hatPos,bg:p.bg,bot:false}));   // de vrais joueurs uniquement (pas de bots)
-    M={ gameType:'solo', seats, cards:{}, deck:[], discard:[], top:null, activeColor:'R', turn:0, dir:1, needColor:false, needColorSeat:-1, pendingWild:null, drawn:null, message:'À toi de jouer 👇', round:1, winnerSeat:-1, coins:{} };
+    M={ gameType:'solo', seats, cards:{}, deck:[], discard:[], top:null, activeColor:'R', turn:0, dir:1, needColor:false, needColorSeat:-1, pendingWild:null, drawn:null, message:'À toi de jouer 👇', round:1, winnerSeat:-1, coins:{}, unoCalled:{} };
     soloDeal(); seats.forEach(s=>{ M.coins[s.id]=0; });
     coinsClaimed=false; phase='soloplay'; curKey=null; SJ.audio.pop(); U().confetti(12); hostRefresh(); scheduleSoloAI();
   }
-  function soloAgain(){ clearSolo(); M.round=(M.round||1)+1; M.winnerSeat=-1; M.needColor=false; M.needColorSeat=-1; M.pendingWild=null; M.dir=1; M.turn=0; soloDeal(); M.message='Nouvelle donne 🎴'; coinsClaimed=false; hostRefresh(); scheduleSoloAI(); }
+  function soloAgain(){ clearSolo(); M.round=(M.round||1)+1; M.winnerSeat=-1; M.needColor=false; M.needColorSeat=-1; M.pendingWild=null; M.dir=1; M.turn=0; M.unoCalled={}; soloDeal(); M.message='Nouvelle donne 🎴'; coinsClaimed=false; hostRefresh(); scheduleSoloAI(); }
   function soloResolve(card){ M.discard.push(card); M.top=card; if(card.color!=='W') M.activeColor=card.color; let skip=false;
     if(card.val==='rev'){ M.dir=-M.dir; if(M.seats.length===2) skip=true; }
     else if(card.val==='skip'){ skip=true; }
@@ -1426,7 +1439,14 @@ SJ.room = (function(){
     clearSolo(); M.activeColor=c; const card=M.pendingWild; soloResolve(card); M.needColor=false; M.needColorSeat=-1; M.pendingWild=null;
     M.message='Joker → '+SJ.SOLO.CMAP[c].name; soloAfter(seat); }
   function soloCallSolo(id){ if(!M||M.winnerSeat>=0) return; const seat=soloSeatOf(id); if(seat<0) return;
-    if(soloCount(seat)===1){ M.message='🔔 '+(M.seats[seat].id===myId?'Tu cries':M.seats[seat].name+' crie')+' UNO !'; hostRefresh(); } else U().toast('Crie UNO quand il te reste 1 carte 🙂'); }
+    if(soloCount(seat)===1){ M.unoCalled[seat]=true; M.message=M.seats[seat].name+' crie UNO ! 🔔'; SJ.audio.coin&&SJ.audio.coin(); hostRefresh(); }
+    else U().toast('Crie UNO quand il te reste 1 carte 🙂'); }
+  // contre-UNO : si un adversaire est à 1 carte sans avoir crié UNO, on le dénonce → il pioche 2 cartes
+  function soloContre(id){ if(!M||M.winnerSeat>=0) return; const seat=soloSeatOf(id); if(seat<0) return;
+    let target=-1; for(let j=0;j<M.seats.length;j++){ if(j!==seat && soloCount(j)===1 && !M.unoCalled[j]){ target=j; break; } }
+    if(target<0){ U().toast('Personne à contrer 🙂'); return; }
+    soloGive(target,2); M.message=M.seats[seat].name+' CONTRE '+M.seats[target].name+' — oubli de UNO, +2 ! ☝️'; SJ.audio.nope&&SJ.audio.nope();
+    hostRefresh(); soloFireAnim(); }
 
   const SOLO_EMPTY='<span style="color:rgba(255,255,255,.7);font-weight:700">tu regardes la partie 👀</span>';
   function soloRingHTML(s){ return s.ring.map((pl,i)=>`<div data-soloseat="${i}" style="position:absolute;top:${pl.top};left:${pl.left};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;width:84px">
@@ -1434,7 +1454,7 @@ SJ.room = (function(){
         <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(-14deg) translateX(-7px)"></div>
         <div style="width:20px;height:30px;border-radius:5px;border:2px solid #3B2D5E;background:#6A4BD6;position:absolute;transform:rotate(14deg) translateX(7px)"></div>
         <div style="width:54px;height:54px;border-radius:50%;border:4px solid ${pl.isTurn?'#FFC93C':'#3B2D5E'};background:${pl.isTurn?'#FFF1C9':'#fff'};display:flex;align-items:center;justify-content:center;z-index:1;${pl.isTurn?'animation:turnring 1s ease-in-out infinite;':''}">${U().ava({avatar:pl.avatar,emoji:pl.emoji,hat:pl.hat,hatPos:pl.hatPos,bg:pl.bg},44)}</div>
-        ${pl.solo?'<div class="pop" style="position:absolute;top:-12px;right:-14px;background:#FFC93C;border:2px solid #3B2D5E;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;z-index:2">UNO!</div>':''}
+        ${pl.solo?`<div class="pop" style="position:absolute;top:-12px;right:-14px;background:${pl.unoSafe?'#2EC4B6':'#FF5D73'};color:#fff;border:2px solid #3B2D5E;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;z-index:2;${pl.unoSafe?'':'animation:turnring 1s ease-in-out infinite'}">${pl.unoSafe?'UNO!':'UNO?'}</div>`:''}
       </div>
       <div style="font-size:14px;font-weight:800;color:${pl.isTurn?'#FFF1C9':'#fff'};text-shadow:0 1px 2px rgba(0,0,0,.4);max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pl.you?'Toi':esc(pl.name)}</div>
       <div style="background:rgba(0,0,0,.28);border:2px solid rgba(255,255,255,.4);border-radius:999px;padding:1px 11px;font-size:13px;font-weight:800;color:#fff">🂠 ${pl.count}</div></div>`).join(''); }
@@ -1442,6 +1462,12 @@ SJ.room = (function(){
   function soloHandHTML(s, deal){ if(!s.hand.length) return SOLO_EMPTY; return s.hand.map((c,k)=>`<button class="solocard" data-i="${c.i}" ${c.playable?'':'disabled'} style="position:relative;width:56px;height:84px;border-radius:12px;border:3px solid #3B2D5E;background:${c.bg};transform:translateY(${c.playable?'-12px':'0'});opacity:${s.myTurn?(c.playable?'1':'.55'):'.85'};box-shadow:${c.playable?'0 0 0 4px rgba(255,201,60,.55),0 9px 0 rgba(0,0,0,.3)':'0 5px 0 rgba(0,0,0,.3)'};cursor:${c.playable?'pointer':'default'};transition:transform .12s ease;font-family:inherit;flex:none${deal?`;animation:dealin .42s ease backwards;animation-delay:${k*55}ms`:''}">${soloCardFace(c.sym,c.ink,c.corner)}</button>`).join(''); }
   function soloTopHTML(s, land){ return `<div id="solo-discard" style="position:relative;width:64px;height:96px;border-radius:14px;border:3px solid #3B2D5E;background:${s.top.bg};box-shadow:0 6px 0 rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;transform:rotate(-5deg)${land?';animation:cardland .32s ease':''}"><div style="position:absolute;inset:15px 9px;border-radius:50% / 40%;background:rgba(255,255,255,.92)"></div><div style="position:relative;font-size:30px;font-weight:800;color:${s.top.ink}">${esc(s.top.sym)}</div><div style="position:absolute;top:5px;left:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div><div style="position:absolute;bottom:5px;right:7px;font-size:13px;font-weight:800;color:${s.top.corner}">${esc(s.top.sym)}</div></div>`; }
   function soloPassHTML(s){ return s.canPass ? '<button id="solo-pass" style="background:#FF8FA3;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 14px;font-size:15px;font-weight:800;box-shadow:0 5px 0 #D45D75;cursor:pointer;font-family:inherit">⏭️ Passer</button>' : ''; }
+  function soloDrawBtnHTML(s){ return s.drawEnabled ? `<button id="solo-drawbtn" style="background:${s.noPlayable?'#FFC93C':'#fff'};color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 16px;font-size:16px;font-weight:800;box-shadow:0 5px 0 ${s.noPlayable?'#D9A416':'#C9BBE8'};cursor:pointer;font-family:inherit;${s.noPlayable?'animation:turnring 1.1s ease-in-out infinite':''}">🃏 Piocher</button>` : ''; }
+  function soloContreHTML(s){ return s.canContre ? `<button id="solo-contre" style="background:#FF5D73;color:#fff;border:3px solid #3B2D5E;border-radius:14px;padding:7px 14px;font-size:15px;font-weight:800;box-shadow:0 5px 0 #C23A50;cursor:pointer;font-family:inherit;animation:turnring 1s ease-in-out infinite">☝️ Contre&nbsp;!</button>` : ''; }
+  function soloActionsHTML(s){ return soloDrawBtnHTML(s)+soloPassHTML(s)+soloContreHTML(s)+`<button id="solocall" style="display:flex;align-items:center;gap:6px;background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 16px;font-size:16px;font-weight:800;box-shadow:0 5px 0 #D9A416;cursor:pointer;font-family:inherit;${s.mustCallUno?'animation:turnring 1s ease-in-out infinite':''}">🔔 UNO&nbsp;!</button>`; }
+  function soloTurnHTML(s){ return s.myTurn
+    ? '<div id="solo-turn" style="text-align:center;background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 14px;font-size:17px;font-weight:800;box-shadow:0 4px 0 #D9A416;animation:turnring 1.1s ease-in-out infinite">🎯 À toi de jouer&nbsp;!</div>'
+    : '<div id="solo-turn" style="text-align:center;background:rgba(0,0,0,.22);color:#fff;border:2px solid rgba(255,255,255,.4);border-radius:14px;padding:7px 14px;font-size:15px;font-weight:800">⏳ Au tour de '+esc(s.turnName||'…')+'</div>'; }
   function soloOverlaysHTML(s, iAmHost){
     const picker = s.needColor ? `<div style="position:absolute;inset:0;background:rgba(31,22,56,.72);display:flex;align-items:center;justify-content:center;z-index:5;border-radius:27px"><div style="background:#FFF8EC;border:3px solid #3B2D5E;border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:14px;align-items:center;box-shadow:0 10px 0 rgba(0,0,0,.3)"><div style="font-size:22px;font-weight:800">🌈 Choisis une couleur</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${s.colorChoices.map(cc=>`<button class="solocol" data-c="${cc.c}" style="width:82px;height:82px;border-radius:18px;border:3px solid #3B2D5E;background:${cc.hex};box-shadow:0 6px 0 ${cc.shadow};cursor:pointer;font-size:16px;font-weight:800;color:${cc.ink};font-family:inherit">${esc(cc.name)}</button>`).join('')}</div></div></div>` : '';
     const winner = s.winner ? `<div style="position:absolute;inset:0;background:rgba(31,22,56,.8);display:flex;align-items:center;justify-content:center;z-index:6;border-radius:27px;padding:14px"><div class="pop" style="background:#fff;border:3px solid #3B2D5E;border-radius:28px;padding:26px;display:flex;flex-direction:column;gap:13px;align-items:center;text-align:center;box-shadow:0 12px 0 #FFC93C;max-width:330px"><div style="position:relative;width:104px;height:104px"><div style="position:absolute;inset:0;border-radius:50%;border:4px solid #3B2D5E;background:#FFF1C9;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 0 #E8C766;animation:floaty 1.6s ease-in-out infinite">${U().ava({avatar:s.winner.avatar,emoji:s.winner.emoji,hat:s.winner.hat,hatPos:s.winner.hatPos,bg:s.winner.bg},84)}</div><div class="pop" style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:36px">👑</div></div><div style="font-size:27px;font-weight:800">${s.winner.you?'Tu gagnes !':esc(s.winner.name)+' gagne !'}</div><div style="font-size:16px;font-weight:700;color:#7A6BA8">Plus une seule carte 🎉</div><span class="pill paper" style="font-size:16px;font-weight:800;box-shadow:0 4px 0 #E5C96A">+${s.winner.earned||0} 🪙</span>${iAmHost?'<button class="btn btn--coral block" id="soloagain">🔁 Rejouer</button>':'<div class="muted" style="font-size:13px;font-weight:700">en attente que l\'hôte relance…</div>'}</div></div>` : '';
@@ -1474,6 +1500,8 @@ SJ.room = (function(){
     app().querySelectorAll('.solocol').forEach(b=> b.onclick=()=>{ SJ.audio.click(); act('solocolor',{c:b.dataset.c}); });
     const sc=$('#solocall'); if(sc) sc.onclick=()=>{ SJ.audio.coin&&SJ.audio.coin(); act('solosolo'); };
     const ps=$('#solo-pass'); if(ps) ps.onclick=()=>{ SJ.audio.click(); act('solopass'); };
+    const db=$('#solo-drawbtn'); if(db) db.onclick=()=>{ if(!s.drawEnabled) return; SJ.audio.click(); act('solodraw'); };
+    const cn=$('#solo-contre'); if(cn) cn.onclick=()=>{ SJ.audio.nope&&SJ.audio.nope(); act('solocontre'); };
     const ag=$('#soloagain'); if(ag) ag.onclick=()=>{ SJ.audio.pop(); coinsClaimed=false; act('soloagain'); };
   }
   function soloClaim(s){ if(s.winner && !coinsClaimed){ SJ.store.addCoins(s.winner.earned||0); coinsClaimed=true; if(s.winner.you){ SJ.audio.win(); U().confetti(50); } else { SJ.audio.lose&&SJ.audio.lose(); } } }
@@ -1487,7 +1515,8 @@ SJ.room = (function(){
     const hc=q('#solo-handcount'); if(hc) hc.textContent='Ta main · '+s.handCount+' carte'+(s.handCount>1?'s':'');
     const hand=q('#solo-hand'); if(hand) hand.innerHTML=soloHandHTML(s,false);
     const dg=q('#solo-drawglow'); if(dg) dg.style.boxShadow=s.drawEnabled?'0 0 0 4px rgba(255,201,60,.5)':'';
-    const pw=q('#solo-passwrap'); if(pw) pw.innerHTML=soloPassHTML(s);
+    const tn=q('#solo-turn'); if(tn) tn.outerHTML=soloTurnHTML(s);
+    const ac2=q('#solo-actions'); if(ac2) ac2.innerHTML=soloActionsHTML(s);
     const ov=q('#solo-overlays'); if(ov) ov.innerHTML=soloOverlaysHTML(s,v.iAmHost);
     soloWire(v); soloClaim(s);
   }
@@ -1506,8 +1535,9 @@ SJ.room = (function(){
           <div id="solo-ring">${soloRingHTML(s)}</div>
         </div>
         <div id="solo-msg" style="min-height:24px;text-align:center;font-size:16px;font-weight:800;color:#fff">${esc(s.message||'')}</div>
+        ${soloTurnHTML(s)}
         <div style="background:rgba(0,0,0,.18);border:2px solid rgba(255,255,255,.3);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:10px">
-          <div class="row between wrap" style="gap:10px"><span id="solo-handcount" style="font-size:16px;font-weight:800;color:#fff">Ta main · ${s.handCount} carte${s.handCount>1?'s':''}</span><div class="row gap6"><span id="solo-passwrap">${soloPassHTML(s)}</span><button id="solocall" style="display:flex;align-items:center;gap:6px;background:#FFC93C;color:#3B2D5E;border:3px solid #3B2D5E;border-radius:14px;padding:7px 16px;font-size:16px;font-weight:800;box-shadow:0 5px 0 #D9A416;cursor:pointer;font-family:inherit">🔔 UNO !</button></div></div>
+          <div class="row between wrap" style="gap:10px"><span id="solo-handcount" style="font-size:16px;font-weight:800;color:#fff">Ta main · ${s.handCount} carte${s.handCount>1?'s':''}</span><div id="solo-actions" class="row gap6" style="flex-wrap:wrap;justify-content:flex-end">${soloActionsHTML(s)}</div></div>
           <div id="solo-hand" class="row" style="align-items:flex-end;justify-content:center;gap:7px;flex-wrap:wrap;min-height:90px">${soloHandHTML(s,true)}</div>
         </div>
         <div id="solo-overlays">${soloOverlaysHTML(s,v.iAmHost)}</div>

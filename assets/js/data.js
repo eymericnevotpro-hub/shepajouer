@@ -162,15 +162,16 @@ SJ.PB = (function(){
     { key:'trapcolor', fn:()=>{ const cols=shuffle(COLORS.slice()).slice(0,4); const tIdx=ri(4); const target=cols[tIdx];
       const cells=cols.map((c,i)=>({bg:c.c, label:cols[(i+1)%4].n}));   // chaque texte = une AUTRE couleur que le fond
       return {kind:'trapcolor', prompt:`Clique le bouton ${target.n.toUpperCase()}`, cells, correct:tIdx, cat:'trap', trap:true}; } },
-    // CAPTCHA EXTRÊME : 5 étapes de plus en plus absurdes à passer dans le temps (mèche plus longue)
-    { key:'captcha', fn:()=>({kind:'captcha', prompt:'🤖 CAPTCHA EXTRÊME', dur:11, cat:'trap', trap:true}) },
   ];
 
   return {
     // avoidKey : clé du mini précédent à ne PAS rejouer ; micTarget = niveau sonore à atteindre
     make(allowMic, avoidKey){
+      // CAPTCHA EXTRÊME : 5 étapes à passer dans le temps — peut tomber QUOI QU'IL ARRIVE (même si tout le monde a cam + micro)
+      if(avoidKey!=='captcha' && Math.random()<0.22)
+        return {kind:'captcha', prompt:'🤖 CAPTCHA EXTRÊME', dur:13, cat:'trap', trap:true, key:'captcha'};
       if(allowMic && avoidKey!=='crie' && Math.random()<0.25)
-        return {kind:'crie', prompt:'CRIE le plus fort possible ! 🎤', cat:'mic', key:'crie', micTarget:0.72};
+        return {kind:'crie', prompt:'CRIE le plus fort possible ! 🎤', cat:'mic', key:'crie', micTarget:0.9};   // seuil bien plus élevé : il faut vraiment hurler
       let pool = BUILDERS.filter(b=> b.key!==avoidKey);
       if(!pool.length) pool = BUILDERS;
       const b = pool[ri(pool.length)];
