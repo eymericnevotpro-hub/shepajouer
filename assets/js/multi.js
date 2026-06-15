@@ -1276,7 +1276,7 @@ SJ.room = (function(){
     players.forEach(p=>{ const win=p.id===winnerId; M.coins[p.id]=(M.coins[p.id]||0)+(M.round*3)+(win?20:0); if(win) p.score+=1; });
     curKey=null; hostRefresh();
   }
-  function ttRingPos(i,n){ const ang=(-90+i*(360/n))*Math.PI/180, r=50; return { left:(50+r*Math.cos(ang))+'%', top:(50+r*Math.sin(ang))+'%' }; }
+  function ttRingPos(i,n){ const ang=(-90+i*(360/n))*Math.PI/180, r=44; return { left:(50+r*Math.cos(ang))+'%', top:(50+r*Math.sin(ang))+'%' }; }
   function ttShake(){ const s=app().querySelector('.stage'); if(s){ s.style.animation='none'; void s.offsetWidth; s.style.animation='shake .35s'; } }   // « c'est pas bon » : tout se secoue
   function rTtPlay(v){
     const tt=v.tt, n=tt.ring.length;
@@ -1298,7 +1298,7 @@ SJ.room = (function(){
         : (v.iAmHost ? `<button class="btn btn--coral lg block" id="tt-light">🔥 Allumer la mèche</button>` : `<div class="center muted" style="font-weight:700">⏳ en attente que l'hôte allume la mèche…</div>`));
     mMount(`<section class="screen"><div class="stage" style="max-width:560px;gap:14px">
       <div class="row between"><span class="pill" style="background:#3B2D5E;color:#fff;font-weight:800">Manche ${tt.round}</span><span style="font-size:15px;font-weight:700;color:#7A6BA8">${tt.aliveCount} en vie</span></div>
-      <div style="position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center">
+      <div style="position:relative;width:min(330px,82vw);height:min(330px,82vw);align-self:center;margin:30px 0 44px">
         <div id="tt-bomb" style="position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,#5A4A7A,#2A2440);border:4px solid #3B2D5E;box-shadow:0 8px 0 #1F1638,inset 0 -6px 12px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
           <div id="tt-spark" style="position:absolute;top:-16%;right:6%;font-size:28px;animation:sparkle .5s ease-in-out infinite">${tt.running?'🔥':''}</div>
           <div style="font-size:12px;font-weight:800;color:#FFC93C;letter-spacing:1px">UN MOT EN</div>
